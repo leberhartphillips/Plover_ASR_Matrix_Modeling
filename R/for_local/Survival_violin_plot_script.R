@@ -9,8 +9,11 @@ library(dplyr)
 library(extrafont)
 
 # Violin plot of sex-differences in survival for 1st years and adults
-cbPalette <- brewer.pal(3, "Dark2")
-cbPalette <- c("#737373", "#BDBDBD")
+
+# Custom color palette for the plotting of female and male stats
+#cbPalette <- brewer.pal(3, "Dark2")
+#cbPalette <- c("#737373", "#BDBDBD")
+cbPalette <- brewer.pal(2, "Dark2")
 
 
 All_pops_sex_diff_A_F <- filter(All_pops_sex_diff, Stage != "Chick")
@@ -29,7 +32,7 @@ Background <-
            label = c("\u2640", "\u2642"), size = 7,
            family="Candara", vjust = c(0.5,0.5), hjust = c(-0.3,1.3)) +
   facet_grid(Population ~ .) +
-  theme(text = element_text(family="Candara", color = "white"), # set the font as Candara
+  theme(text = element_text(family="Arial", color = "white"),
         legend.position = "none",
         axis.title.x = element_text(size=12, vjust=-0.1),
         axis.text.x  = element_text(size=10), 

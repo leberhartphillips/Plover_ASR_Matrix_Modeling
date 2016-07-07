@@ -1,4 +1,5 @@
 # Plotting script of bootstrap results for comparative analysis
+# Sex-differences in survival
 # Luke J. Eberhart-Phillips
 # July 6, 2016
 
@@ -7,7 +8,14 @@ library(RColorBrewer)
 library(dplyr)
 library(ggplot2)
 library(reshape2)
-#library(grid)
+library(grid)
+library(extrafont)
+
+# Find fonts from computer that are candara or Candara
+font_import(pattern="[M/m]enlo", prompt = FALSE) 
+fonts()
+fonttable()
+loadfonts() # load these into R
 
 # Import the bootstrapped survival analysis results
 # each row is the sex- and stage-specific survival estimate for a given iteration
@@ -85,13 +93,13 @@ Ceuta_sex_diff <- sex_diff_surv(Ceuta_VR)
 Ceuta_sex_diff$Population <- c("Snowy")
 
 Tuzla_sex_diff <- sex_diff_surv(Tuzla_VR)
-Tuzla_sex_diff$Population <- c("Kentish (Tuzla)")
+Tuzla_sex_diff$Population <- c("Kentish-Tuzla")
 
 MP_sex_diff <- sex_diff_surv(MP_VR)
 MP_sex_diff$Population <- c("Madagascar")
 
 Maio_sex_diff <- sex_diff_surv(Maio_VR)
-Maio_sex_diff$Population <- c("Kentish (Maio)")
+Maio_sex_diff$Population <- c("Kentish-Maio")
 
 WfP_sex_diff <- sex_diff_surv(WfP_VR)
 WfP_sex_diff$Population <- c("White-fronted")
@@ -114,9 +122,9 @@ colnames(All_pops_sex_diff) <- c("Stage", "Difference", "Population")
 All_pops_sex_diff$Population <- 
   factor(All_pops_sex_diff$Population ,
          levels = c("Snowy",
-                    "Kentish (Tuzla)",
+                    "Kentish-Tuzla",
                     "Madagascar",
-                    "Kentish (Maio)",
+                    "Kentish-Maio",
                     "White-fronted",
                     "Kittlitz's"))
 
@@ -140,27 +148,26 @@ All_pops_sex_diff_A_F <- filter(All_pops_sex_diff, Stage != "Chick")
 All_pops_sex_diff_A_F$Stage <- 
   factor(All_pops_sex_diff_A_F$Stage, levels = c("Juvenile", "Adult"))
 
-# All_pops_sex_diff_A_F_2 <- All_pops_sex_diff_A_F
-# All_pops_sex_diff_A_F_2$Stage <- as.numeric(All_pops_sex_diff_A_F_2$Stage)
-
 # draw the background plot (i.e. the two shades of color for male or
 # female bias)
 Background <- 
   ggplot(aes(y = Difference, x = Stage, fill = Stage), data = All_pops_sex_diff_A_F) + 
-  #coord_flip() +
   theme_bw() +
-  annotate("rect", xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=0, alpha=0.5,
+  annotate("rect", xmin=0, xmax=4, ymin=-0.43, ymax=0, alpha=0.7,
            fill=brewer.pal(8, "Dark2")[c(1)]) +
-  annotate("rect", xmin=-Inf, xmax=Inf, ymin=0, ymax=Inf, alpha=0.5,
+  annotate("rect", xmin=0, xmax=4, ymin=0, ymax=0.43, alpha=0.7,
            fill=brewer.pal(8, "Dark2")[c(2)]) +
-  annotate("text", x = c(2,2), y = c(-Inf, Inf),
-           label = c("\u2640", "\u2642"), size = 7,
-           family="Arial", vjust = c(0.5,0.5), hjust = c(-0.3,1.3)) +
+  annotate("text", x = c(2), y = c(-0.37),
+           label = c("\u2640"), size = 7,
+           family="Menlo", vjust = c(0.5), hjust = c(0.5)) +
+  annotate("text", x = c(2), y = c(0.37),
+           label = c("\u2642"), size = 7,
+           family="Menlo", vjust = c(0.5), hjust = c(0.5)) +
   facet_grid(. ~ Population) +
-  theme(text = element_text(family="Arial", colour = "white"),
+  theme(text = element_text(family="Menlo", colour = "white"),
         legend.position = "none",
         axis.title.x = element_text(size=12, vjust=-0.1),
-        axis.text.x  = element_text(size=10), 
+        axis.text.x  = element_text(size=10, angle = 45, hjust = 1), 
         axis.title.y = element_text(size=12, hjust=0.5, vjust = 3.5),
         axis.text.y  = element_text(size=10),
         panel.grid.major = element_blank(),
@@ -169,67 +176,23 @@ Background <-
         axis.ticks.x = element_line(size = 0.5, colour = "white"),
         axis.ticks.length = unit(0.2, "cm"),
         panel.border = element_blank(),
-        plot.margin = unit(c(2,1,1,1), "cm"),
+        plot.margin = unit(c(0.5,1.75,0.5,0.5), "cm"),
         panel.margin = unit(0.75, "lines"),
         strip.background = element_blank(), 
-        strip.text = element_blank()) +
-  scale_x_continuous(limits=c(0,4),breaks=c(0,1), labels=c("Juvenile", "Adult")) +
-  scale_y_continuous(limits=c(-0.4,0.4)) +
+        strip.text = element_text(size=11)) +
+  scale_x_continuous(limits=c(0,4),breaks=c(0,1), labels=c("Juvenile", "Adult"), expand = c(0, 0)) +
+  scale_y_continuous(limits=c(-0.43,0.43), expand = c(0, 0)) +
   xlab("Life-stage") + 
   ylab("Sex-bias in survival")
-#Background
 
-Bootstrap_sex_diff_VR_plot <- 
-  ggplot() +
-  geom_blank(data = All_pops_sex_diff_A_F, aes(y = Difference, x = as.numeric(Stage))) +
-  
-  geom_violin(aes(y = Difference, x = Stage, fill = Stage), data = All_pops_sex_diff_A_F) +
-  #ggplot(aes(y = Difference, x = Stage, fill = Stage), data = All_pops_sex_diff_A_F) + 
-  #geom_boxplot(width = 0.2)
-  #coord_flip() +
-  theme_bw() +
-  geom_ribbon(data = All_pops_sex_diff_A_F, 
-              aes(x = Stage, ymin = min(Difference), ymax = max(Difference)),
-              alpha = 1,
-              fill = brewer.pal(8, "Dark2")[c(1)]) +
-  facet_grid(. ~ Population) +
-  
-  #geom_violin() +
-  #geom_boxplot(width = 0.2) +
-  #geom_dotplot(binaxis = "y", binwidth = 0.003, stackdir = "center") +
-  theme(text = element_text(family="Arial"),
-        legend.position = "none",
-        panel.background = element_rect(fill = "transparent",colour = NA),
-        plot.background = element_rect(fill = "transparent",colour = NA),
-        axis.title.x = element_text(size=12, vjust=-0.1),
-        axis.text.x  = element_text(size=10, angle = 45, hjust = 1), 
-        axis.title.y = element_text(size=12, hjust=0.5, vjust = 3.5),
-        axis.text.y  = element_text(size=10),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.ticks.y = element_line(size = 0.5, colour = "grey40"),
-        axis.ticks.length = unit(0.2, "cm"),
-        axis.ticks.x = element_line(size = 0.5, colour = "grey40"),
-        panel.border = element_rect(linetype = "solid", colour = "grey"),
-        plot.margin = unit(c(2,1,1,1), "cm"),
-        panel.margin = unit(0.75, "lines"),
-        strip.background = element_blank(), 
-        strip.text = element_blank()) +
-  scale_fill_manual(values = cbPalette) +
-  scale_y_continuous(limits=c(-0.4,0.4)) +
-  xlab("Life-stage") + 
-  ylab("Sex-bias in survival")
-Bootstrap_sex_diff_VR_plot
-
+# draw the plot with the same parameters as the background plot but this time add data
 Bootstrap_sex_diff_VR_plot <- 
   ggplot(aes(y = Difference, x = Stage, fill = Stage), data = All_pops_sex_diff_A_F) + 
-  #coord_flip() +
   theme_bw() +
-  geom_violin() +
-  geom_boxplot(width = 0.2) +
-  #geom_dotplot(binaxis = "y", binwidth = 0.003, stackdir = "center") +
+  geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) +
+  #geom_boxplot(width = 0.2) +
   facet_grid(. ~ Population) +
-  theme(text = element_text(family="Arial"),
+  theme(text = element_text(family="Menlo"),
         legend.position = "none",
         panel.background = element_rect(fill = "transparent",colour = NA),
         plot.background = element_rect(fill = "transparent",colour = NA),
@@ -242,34 +205,73 @@ Bootstrap_sex_diff_VR_plot <-
         axis.ticks.y = element_line(size = 0.5, colour = "grey40"),
         axis.ticks.length = unit(0.2, "cm"),
         axis.ticks.x = element_line(size = 0.5, colour = "grey40"),
-        panel.border = element_rect(linetype = "solid", colour = "grey"),
-        plot.margin = unit(c(2,1,1,1), "cm"),
+        panel.border = element_blank(),
+        plot.margin = unit(c(0.5,1.75,0.5,0.5), "cm"),
         panel.margin = unit(0.75, "lines"),
         strip.background = element_blank(), 
-        strip.text = element_blank()) +
+        strip.text = element_text(size=11)) +
   scale_fill_manual(values = cbPalette) +
-  scale_y_continuous(limits=c(-0.4,0.4)) +
+  scale_y_continuous(limits=c(-0.43,0.43), expand = c(0, 0)) +
   xlab("Life-stage") + 
   ylab("Sex-bias in survival")
 Bootstrap_sex_diff_VR_plot
 
+# blank plot for presentations
+Bootstrap_sex_diff_VR_plot_blank <- 
+  ggplot(aes(y = Difference, x = Stage, fill = Stage), data = All_pops_sex_diff_A_F) + 
+  theme_bw() +
+  geom_blank() +
+  facet_grid(. ~ Population) +
+  theme(text = element_text(family="Menlo"),
+        legend.position = "none",
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        axis.title.x = element_text(size=12, vjust=-0.1),
+        axis.text.x  = element_text(size=10, angle = 45, hjust = 1), 
+        axis.title.y = element_text(size=12, hjust=0.5, vjust = 3.5),
+        axis.text.y  = element_text(size=10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks.y = element_line(size = 0.5, colour = "grey40"),
+        axis.ticks.length = unit(0.2, "cm"),
+        axis.ticks.x = element_line(size = 0.5, colour = "grey40"),
+        panel.border = element_blank(),
+        plot.margin = unit(c(0.5,1.75,0.5,0.5), "cm"),
+        panel.margin = unit(0.75, "lines"),
+        strip.background = element_blank(), 
+        strip.text = element_text(size=11)) +
+  scale_fill_manual(values = cbPalette) +
+  scale_y_continuous(limits=c(-0.43,0.43), expand = c(0, 0)) +
+  xlab("Life-stage") + 
+  ylab("Sex-bias in survival")
+Bootstrap_sex_diff_VR_plot_blank
+
+# prepare export of plot
 jpeg(filename = "figs/Sex-differences_in_survival.jpg",
      quality = 100,
      width = 10,
-     height = 5, 
+     height = 4.5, 
      units = "in",
-     res = 300) 
+     res = 500) 
 
+# overlay the background and data plots on top of eachother and export to disk
 grid.newpage()
 pushViewport( viewport( layout = grid.layout( 1 , 1 , widths = unit( 1 , "npc" ) ) ) ) 
 print( Background + theme(legend.position="none") , vp = viewport( layout.pos.row = 1 , layout.pos.col = 1 ) )
 print( Bootstrap_sex_diff_VR_plot + theme(legend.position="none") , vp = viewport( layout.pos.row = 1 , layout.pos.col = 1 ) )
 dev.off()
 
+# prepare export of blank plot
+jpeg(filename = "figs/Sex-differences_in_survival_blank.jpg",
+     quality = 100,
+     width = 10,
+     height = 4.5, 
+     units = "in",
+     res = 500) 
 
-ggsave(#SP_fecund_plot, 
-       filename = "Sex-differences_in_survival.jpg", 
-       path = "/home/luke/comparative_ASR/Bootstrap/Total_output/Figures",
-       width = 4,
-       height = 4, units = "in",
-       dpi = 300)
+# overlay the background and data plots on top of eachother and export to disk
+grid.newpage()
+pushViewport( viewport( layout = grid.layout( 1 , 1 , widths = unit( 1 , "npc" ) ) ) ) 
+print( Background + theme(legend.position="none") , vp = viewport( layout.pos.row = 1 , layout.pos.col = 1 ) )
+print( Bootstrap_sex_diff_VR_plot_blank + theme(legend.position="none") , vp = viewport( layout.pos.row = 1 , layout.pos.col = 1 ) )
+dev.off()
