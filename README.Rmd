@@ -6,7 +6,7 @@ In this repository you can find all the necessary files needed to reproduce the 
 
 **`R/`** *(SM Appendix A)*
 
-  - **Eberhart_Phillips_et_al_SM_Appendix_A.pdf** and **Eberhart_Phillips_et_al_SM_Appendix_A.Rmd** contains the documented code for all analyses, which can be implemented after downloading the datasets provided in the **`data/`** and **`output/bootstrap/`** folders.
+  - **Eberhart_Phillips_et_al_SM_Appendix_A.pdf** and **Eberhart_Phillips_et_al_SM_Appendix_A.Rmd** contains the documented code for all analyses, which can be implemented after downloading the datasets provided in the **`data/`** and **`output/`** folders.
 
 **`data/`** *(SM Appendix B)*
 
@@ -18,7 +18,7 @@ In this repository you can find all the necessary files needed to reproduce the 
 
   - **parental_care_data.txt** contains the behavioral observations of the care-system for each family. Each row is an observation of a unique family (*brood_ID*) within a given *population*. *care_system* expresses the parental care recorded on a given observation (i.e. "male_care", "female_care", or "biparental_care". *hatch_date* indicates the date on which a given brood hatched. *date* indicates the date on which the observation was made.
   
-**`output/bootstrap/`**
+**`output/`**
 
   - **AIC_table_juvenile_adult_boot_out.txt** contains the bootstrap output for model selection of juvenile and adult survival based on the mark-recapture analysis run in Program MARK. Each row is a *model* fitted via maximum likelihood to the bootstrapped data sample of each iteration (*iter*). *Phi* describes the model structure for fitting annual survival. *p* describes the model structure for fitting annual encounter probability. *npar* reveals the number of parameters used in a given model. *AICc* is the Akaike Information Criteria statistic corrected for small sample size. *DeltaAICc* is the difference in AICc between a given model and the best fit model of a given iteration. *weight* describes the AIC weight of a given model. *Deviance* describes the deviance of a given model.
 
