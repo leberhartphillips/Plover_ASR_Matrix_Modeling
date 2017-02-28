@@ -52,13 +52,13 @@ library(extrafont)
 
 To start, please load the following datasets into your R environment:
 
-- **data/Appendix_B_juvenile_adult_mark-recapture_data.txt** contains the mark-recapture field data of juveniles and adults. Each row is a single uniquely marked individual identified by their *bird_ID*. The annual encounter history of an individual is expressed in their *ch*, where a "1" indicates that an individual was encountered and "0" indicates it was not encountered. *sex* describes the molecular sex-type of an individual with "M" for males and "F" for females. *age* describes the stage at which an individual was initially captured, where "J" indicates it was first captured as a chick, and "A" indicates it was first captured as an adult. *population* describes the population in which the individual was sampled from.
+- **data/Appendix_B_juvenile_adult_mark-recapture_data.txt** contains the mark-recapture field data of juveniles and adults. Each row is a single uniquely marked individual identified by their *bird_ID*. The annual encounter history of an individual is expressed in their *ch*, where a "1" indicates that an individual was encountered and "0" indicates it was not encountered. *sex* describes the molecular sex-type of an individual with "M" for males and "F" for females. *age* describes the stage at which an individual was initially captured, where "J" indicates it was first captured as a chick, and "A" indicates it was first captured as an adult. *population* describes the population in which the individual was sampled from ("KIP" = Kittlitz's plover, "MP" = Madagascar plover, "WFP" = white-fronted plover, "KPT" = Kentish plover Tuzla, "KPM" = Kentish plover Maio, and "SP" = snowy plover).
 
-- **data/Appendix_B_breeding_data.txt** contains the individual reproductive histories of all marked breeding adults in the population. Each row is a nesting attempt uniquely identified by the *family_ID*. *no_chicks* expresses the number of chicks that hatched from the nest. *clutch_size* indicates the number of eggs in the nest when it was initially discovered. *year* describes the year in which the nest was active. *male* and *female* indicates the unique identity of the father and mother, respectively, with "male_NA" and "female_NA" describing cases in which the other mate was not identified. *population* describes the population in which the individual was sampled from.
+- **data/Appendix_B_breeding_data.txt** contains the individual reproductive histories of all marked breeding adults in the population. Each row is a nesting attempt uniquely identified by the *family_ID*. *no_chicks* expresses the number of chicks that hatched from the nest. *clutch_size* indicates the number of eggs in the nest when it was initially discovered. *year* describes the year in which the nest was active. *male* and *female* indicates the unique identity of the father and mother, respectively, with "male_NA" and "female_NA" describing cases in which the other mate was not identified. *population* describes the population in which the individual was sampled from (same notation as above).
 
-- **data/Appendix_B_hatching_sex_ratio_data.txt** contains the sex and origin of each chick included in our analysis to assess hatching sex ratio. Each row is a chick uniquely identified by their *chick_ID*. The family of origin for each chick is shown in their *family_ID*. *year* describes the year in which the chick hatched. A "1" in either the *male* or *female* column indicates the molecular sex-type of a given chick. *population* describes the population in which the chick was sampled.
+- **data/Appendix_B_hatching_sex_ratio_data.txt** contains the sex and origin of each chick included in our analysis to assess hatching sex ratio. Each row is a chick uniquely identified by their *chick_ID*. The family of origin for each chick is shown in their *family_ID*. *year* describes the year in which the chick hatched. A "1" in either the *male* or *female* column indicates the molecular sex-type of a given chick. *population* describes the population in which the chick was sampled (same notation as above).
 
-- **data/Appendix_B_parental_care_data.txt** contains the behavioral observations of the care-system for each family. Each row is an observation of a unique family (*family_ID*) within a given *population*. *care_system* expresses the parental care recorded on a given observation (i.e. "male_care", "female_care", or "biparental_care". *hatch_date* indicates the date on which a given brood hatched. *date* indicates the date on which the observation was made.
+- **data/Appendix_B_parental_care_data.txt** contains the behavioral observations of the care-system for each family. Each row is an observation of a unique family (*family_ID*) within a given *population*. *care_system* expresses the parental care recorded on a given observation (i.e. "male_care", "female_care", or "biparental_care". *hatch_date* indicates the date on which a given brood hatched. *date* indicates the date on which the observation was made (same notation as above).
 ```{r, results = "hide", message = FALSE, warning=FALSE, cache = TRUE}
 # change this to your working directory where you downloaded our repository
 setwd("~/Dropbox/Luke/R_projects/Plover_ASR_Matrix_Modeling")
@@ -982,13 +982,13 @@ niter <- 1000
 ```
 E) start the bootstrap (takes approx. 130 hours on an Intel XEON E5v2 series sever with 40 threads). Uncomment this section to run the bootstrap. To bypass this, load the bootstrap output datasets in the next section to continue the analysis.
 ```{r}
-# KiP_survival_ASR_bootstrap_result <-
+# KIP_survival_ASR_bootstrap_result <-
 #   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "KIP",
 #          start_year = 2009, num_years = 7, k = 2, HSR = HSR_KIP, h = KIP_h)
 # MP_survival_ASR_bootstrap_result <-
 #   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "MP", 
 #          start_year = 2009, num_years = 7, k = 2, HSR = HSR_MP, h = MP_h)
-# WfP_survival_ASR_bootstrap_result <-
+# WFP_survival_ASR_bootstrap_result <-
 #   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "WFP", 
 #          start_year = 2009, num_years = 7, k = 3, HSR = HSR_WFP, h = WFP_h)
 # KPT_survival_ASR_bootstrap_result <-
@@ -1006,12 +1006,12 @@ F) Extract data from the bootstrap output (uncomment these sections if you ran t
 ### AIC tables of juvenile and adult survival for each interation
 ```{r}
 # # Kittlitz's plover
-# KiP_AIC_table_juvenile_adult_boot <-
+# KIP_AIC_table_juvenile_adult_boot <-
 # do.call(rbind, lapply(seq(from = 1, to = niter * 3, by = 3),
-#                       function(x) KiP_survival_ASR_bootstrap_result[[x]]))
-# num_mods <- nrow(KiP_AIC_table_juvenile_adult_boot)/niter
-# KiP_AIC_table_juvenile_adult_boot$iter <- rep(1:niter, each = num_mods)
-# KiP_AIC_table_juvenile_adult_boot$population <- "KIP"
+#                       function(x) KIP_survival_ASR_bootstrap_result[[x]]))
+# num_mods <- nrow(KIP_AIC_table_juvenile_adult_boot)/niter
+# KIP_AIC_table_juvenile_adult_boot$iter <- rep(1:niter, each = num_mods)
+# KIP_AIC_table_juvenile_adult_boot$population <- "KIP"
 # 
 # # Madagascar plover
 # MP_AIC_table_juvenile_adult_boot <-
@@ -1022,12 +1022,12 @@ F) Extract data from the bootstrap output (uncomment these sections if you ran t
 # MP_AIC_table_juvenile_adult_boot$population <- "MP"
 # 
 # # white-fronted plover
-# WfP_AIC_table_juvenile_adult_boot <-
+# WFP_AIC_table_juvenile_adult_boot <-
 # do.call(rbind, lapply(seq(from = 1, to = niter * 3, by = 3),
-#                       function(x) WfP_survival_ASR_bootstrap_result[[x]]))
-# num_mods <- nrow(WfP_AIC_table_juvenile_adult_boot)/niter
-# WfP_AIC_table_juvenile_adult_boot$iter <- rep(1:niter, each = num_mods)
-# WfP_AIC_table_juvenile_adult_boot$population <- "WfP"
+#                       function(x) WFP_survival_ASR_bootstrap_result[[x]]))
+# num_mods <- nrow(WFP_AIC_table_juvenile_adult_boot)/niter
+# WFP_AIC_table_juvenile_adult_boot$iter <- rep(1:niter, each = num_mods)
+# WFP_AIC_table_juvenile_adult_boot$population <- "WFP"
 # 
 # # Tuzla Kentish plover
 # KPT_AIC_table_juvenile_adult_boot <-
@@ -1053,8 +1053,8 @@ F) Extract data from the bootstrap output (uncomment these sections if you ran t
 # SP_AIC_table_juvenile_adult_boot$iter <- rep(1:niter, each = num_mods)
 # SP_AIC_table_juvenile_adult_boot$population <- "SP"
 # 
-# AIC_table_juvenile_adult_boot_out <- rbind(KiP_AIC_table_juvenile_adult_boot,
-#                                            WfP_AIC_table_juvenile_adult_boot,
+# AIC_table_juvenile_adult_boot_out <- rbind(KIP_AIC_table_juvenile_adult_boot,
+#                                            WFP_AIC_table_juvenile_adult_boot,
 #                                            MP_AIC_table_juvenile_adult_boot,
 #                                            KPT_AIC_table_juvenile_adult_boot,
 #                                            KPM_AIC_table_juvenile_adult_boot,
@@ -1065,11 +1065,11 @@ F) Extract data from the bootstrap output (uncomment these sections if you ran t
 (uncomment these sections if you ran the bootstrap)
 ```{r}
 # # Kittlitz's plover
-# KiP_survival_rates_boot <-
+# KIP_survival_rates_boot <-
 # do.call(rbind, lapply(seq(from = 2, to = niter * 3, by = 3),
-#                       function(x) KiP_survival_ASR_bootstrap_result[[x]]))
-# KiP_survival_rates_boot$iter <- rep(1:niter, each = 4)
-# KiP_survival_rates_boot$population <- "KIP"
+#                       function(x) KIP_survival_ASR_bootstrap_result[[x]]))
+# KIP_survival_rates_boot$iter <- rep(1:niter, each = 4)
+# KIP_survival_rates_boot$population <- "KIP"
 # 
 # # Madagascar plover
 # MP_survival_rates_boot <-
@@ -1079,11 +1079,11 @@ F) Extract data from the bootstrap output (uncomment these sections if you ran t
 # MP_survival_rates_boot$population <- "MP"
 # 
 # # white-fronted plover
-# WfP_survival_rates_boot <-
+# WFP_survival_rates_boot <-
 # do.call(rbind, lapply(seq(from = 2, to = niter * 3, by = 3),
-#                       function(x) WfP_survival_ASR_bootstrap_result[[x]]))
-# WfP_survival_rates_boot$iter <- rep(1:niter, each = 4)
-# WfP_survival_rates_boot$population <- "WFP"
+#                       function(x) WFP_survival_ASR_bootstrap_result[[x]]))
+# WFP_survival_rates_boot$iter <- rep(1:niter, each = 4)
+# WFP_survival_rates_boot$population <- "WFP"
 # 
 # # Tuzla Kentish plover
 # KPT_survival_rates_boot <-
@@ -1107,21 +1107,21 @@ F) Extract data from the bootstrap output (uncomment these sections if you ran t
 # SP_survival_rates_boot$population <- "SP"
 # 
 # survival_rates_boot_out <- rbind(SP_survival_rates_boot,
-#                                  KiP_survival_rates_boot,
+#                                  KIP_survival_rates_boot,
 #                                  KPT_survival_rates_boot,
 #                                  KPM_survival_rates_boot,
 #                                  MP_survival_rates_boot,
-#                                  WfP_survival_rates_boot)
+#                                  WFP_survival_rates_boot)
 ```
 ### ASR estimate for each iteration  
 
 (uncomment these sections if you ran the bootstrap)
 ```{r}
 # # Kittlitz'z plover
-# KiP_ASR_boot <-
+# KIP_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
-#        function(x) KiP_survival_ASR_bootstrap_result[[x]])
-# KiP_ASR_boot <- data.frame(ASR_boot = unname(KiP_ASR_boot), iter = 1:niter, population = "KIP")
+#        function(x) KIP_survival_ASR_bootstrap_result[[x]])
+# KIP_ASR_boot <- data.frame(ASR_boot = unname(KIP_ASR_boot), iter = 1:niter, population = "KIP")
 # 
 # # Madagascar plover
 # MP_ASR_boot <-
@@ -1130,10 +1130,10 @@ F) Extract data from the bootstrap output (uncomment these sections if you ran t
 # MP_ASR_boot <- data.frame(ASR_boot = unname(MP_ASR_boot), iter = 1:niter, population = "MP")
 # 
 # # white-fronted plover
-# WfP_ASR_boot <-
+# WFP_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
-#        function(x) WfP_survival_ASR_bootstrap_result[[x]])
-# WfP_ASR_boot <- data.frame(ASR_boot = unname(WfP_ASR_boot), iter = 1:niter, population = "WFP")
+#        function(x) WFP_survival_ASR_bootstrap_result[[x]])
+# WFP_ASR_boot <- data.frame(ASR_boot = unname(WFP_ASR_boot), iter = 1:niter, population = "WFP")
 # 
 # # Tuzla Kentish plover
 # KPT_ASR_boot <-
@@ -1154,11 +1154,11 @@ F) Extract data from the bootstrap output (uncomment these sections if you ran t
 # SP_ASR_boot <- data.frame(ASR_boot = unname(SP_ASR_boot), iter = 1:niter, population = "SP")
 # 
 # ASR_boot_out <- rbind(SP_ASR_boot,
-#                       KiP_ASR_boot,
+#                       KIP_ASR_boot,
 #                       KPT_ASR_boot,
 #                       KPM_ASR_boot,
 #                       MP_ASR_boot,
-#                       WfP_ASR_boot)
+#                       WFP_ASR_boot)
 ```
 To save your time with re-running the bootstrap, here are the four datasets produced by the bootstrap:
 
