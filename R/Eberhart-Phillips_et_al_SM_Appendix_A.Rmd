@@ -52,31 +52,31 @@ library(extrafont)
 
 To start, please load the following datasets into your R environment:
 
-- **data/juvenile_adult_mark-recapture_data.txt** contains the mark-recapture field data of juveniles and adults. Each row is a single uniquely marked individual identified by their *bird_ID*. The annual encounter history of an individual is expressed in their *ch*, where a "1" indicates that an individual was encountered and "0" indicates it was not encountered. *sex* describes the molecular sex-type of an individual with "M" for males and "F" for females. *age* describes the stage at which an individual was initially captured, where "J" indicates it was first captured as a chick, and "A" indicates it was first captured as an adult. *population* describes the population in which the individual was sampled from.
+- **data/Appendix_B_juvenile_adult_mark-recapture_data.txt** contains the mark-recapture field data of juveniles and adults. Each row is a single uniquely marked individual identified by their *bird_ID*. The annual encounter history of an individual is expressed in their *ch*, where a "1" indicates that an individual was encountered and "0" indicates it was not encountered. *sex* describes the molecular sex-type of an individual with "M" for males and "F" for females. *age* describes the stage at which an individual was initially captured, where "J" indicates it was first captured as a chick, and "A" indicates it was first captured as an adult. *population* describes the population in which the individual was sampled from.
 
-- **data/breeding_data.txt** contains the individual reproductive histories of all marked breeding adults in the population. Each row is a nesting attempt uniquely identified by the nest *ID*. *no_chicks* expresses the number of chicks that hatched from the nest. *clutch_size* indicates the number of eggs in the nest when it was initially discovered. *year* describes the year in which the nest was active. *male* and *female* indicates the unique identity of the father and mother, respectively, with "male_NA" and "female_NA" describing cases in which the other mate was not identified. *population* describes the population in which the individual was sampled from.
+- **data/Appendix_B_breeding_data.txt** contains the individual reproductive histories of all marked breeding adults in the population. Each row is a nesting attempt uniquely identified by the *family_ID*. *no_chicks* expresses the number of chicks that hatched from the nest. *clutch_size* indicates the number of eggs in the nest when it was initially discovered. *year* describes the year in which the nest was active. *male* and *female* indicates the unique identity of the father and mother, respectively, with "male_NA" and "female_NA" describing cases in which the other mate was not identified. *population* describes the population in which the individual was sampled from.
 
-- **data/hatching_sex_ratio_data.txt** contains the sex and origin of each chick included in our analysis to assess hatching sex ratio. Each row is a chick uniquely identified by their *chick_ID*. The family of origin for each chick is shown in their *nest_ID*. *year* describes the year in which the chick hatched. A "1" in either the *male* or *female* column indicates the molecular sex-type of a given chick. *population* describes the population in which the chick was sampled.
+- **data/Appendix_B_hatching_sex_ratio_data.txt** contains the sex and origin of each chick included in our analysis to assess hatching sex ratio. Each row is a chick uniquely identified by their *chick_ID*. The family of origin for each chick is shown in their *family_ID*. *year* describes the year in which the chick hatched. A "1" in either the *male* or *female* column indicates the molecular sex-type of a given chick. *population* describes the population in which the chick was sampled.
 
-- **data/parental_care_data.txt** contains the behavioral observations of the care-system for each family. Each row is an observation of a unique family (*brood_ID*) within a given *population*. *care_system* expresses the parental care recorded on a given observation (i.e. "male_care", "female_care", or "biparental_care". *hatch_date* indicates the date on which a given brood hatched. *date* indicates the date on which the observation was made.
+- **data/Appendix_B_parental_care_data.txt** contains the behavioral observations of the care-system for each family. Each row is an observation of a unique family (*family_ID*) within a given *population*. *care_system* expresses the parental care recorded on a given observation (i.e. "male_care", "female_care", or "biparental_care". *hatch_date* indicates the date on which a given brood hatched. *date* indicates the date on which the observation was made.
 ```{r, results = "hide", message = FALSE, warning=FALSE, cache = TRUE}
 # change this to your working directory where you downloaded our repository
 setwd("~/Dropbox/Luke/R_projects/Plover_ASR_Matrix_Modeling")
 
 juvenile_adult <- 
-  read.table("data/juvenile_adult_mark-recapture_data.txt",
+  read.table("data/Appendix_B_juvenile_adult_mark-recapture_data.txt",
              header = TRUE, colClasses = c("factor","character","factor","factor","factor"))
 
 breeding_data <-
-  read.table("data/breeding_data.txt",
+  read.table("data/Appendix_B_breeding_data.txt",
              header = TRUE)
 
 hatching_sex_ratio <-
-  read.table("data/hatching_sex_ratio_data.txt",
+  read.table("data/Appendix_B_hatching_sex_ratio_data.txt",
              header = TRUE)
 
 parental_care_data <-
-  read.table("data/parental_care_data.txt",
+  read.table("data/Appendix_B_parental_care_data.txt",
              header = TRUE)
 ```
 
@@ -109,7 +109,7 @@ To account for surveyor oversight while recording tending parents (i.e., misiden
 ```{r}
 parental_care_summary <- 
   parental_care_data %>%
-    dplyr::group_by(population, brood_period, brood_ID) %>%
+    dplyr::group_by(population, brood_period, family_ID) %>%
     dplyr::summarise(care_system = care_system[which.min(as.numeric(care_system_num))])
 ```
 
@@ -118,7 +118,7 @@ Calculate the proportion of late families in each population that exhibit *bipar
 # summarize the absolute number of families for each popualtion that are in the "late" brood_period.
 sample_sizes <- reshape::cast(filter(parental_care_summary, brood_period == "late") %>%
                               dplyr::group_by(population, care_system) %>%
-                              dplyr::summarise(n = n_distinct(brood_ID)),
+                              dplyr::summarise(n = n_distinct(family_ID)),
                               population ~ care_system, sum)
 
 # create a matrix of the summary
@@ -204,12 +204,12 @@ Figure_1c
 
 The hatching sex ratio represents "rho" in the matrix model and is calculated from a dataset (*hatching_sex_ratio.txt*) that contains broods that met two criteria: 1) the brood size was the modal clutch size of the species, and 2) chicks were captured and sampled on the day of hatching. These criteria made sure to control for post-hatch brood mixing, which can occur in precocial species such as plovers.
 
-First, for each population, we tested for significant deviations in the hatching sex ratio from parity. We used a binomial mixed-effects model that included *nest_ID* as a random effect to control for the non-independence of siblings.
+First, for each population, we tested for significant deviations in the hatching sex ratio from parity. We used a binomial mixed-effects model that included *family_ID* as a random effect to control for the non-independence of siblings.
 
 Kittlitz's plover:
 ```{r}
 KIP_mod <- 
-  lme4::glmer(cbind(male, female) ~ (1|nest_ID),
+  lme4::glmer(cbind(male, female) ~ (1|family_ID),
               data = hatching_sex_ratio[which(hatching_sex_ratio$population == "KIP"),], 
               family = binomial)
 
@@ -220,7 +220,7 @@ summary(KIP_mod)
 Tuzla population of Kentish plover:
 ```{r}
 KPT_mod <- 
-  lme4::glmer(cbind(male, female) ~ (1|nest_ID),
+  lme4::glmer(cbind(male, female) ~ (1|family_ID),
               data = hatching_sex_ratio[which(hatching_sex_ratio$population == "KPT"),], 
               family = binomial)
 
@@ -231,7 +231,7 @@ summary(KPT_mod)
 Maio population of Kentish plover:
 ```{r}
 KPM_mod <- 
-  lme4::glmer(cbind(male, female) ~ (1|nest_ID),
+  lme4::glmer(cbind(male, female) ~ (1|family_ID),
               data = hatching_sex_ratio[which(hatching_sex_ratio$population == "KPM"),], 
               family = binomial)
 
@@ -242,7 +242,7 @@ summary(KPM_mod)
 Snowy plover:
 ```{r}
 SP_mod <- 
-  lme4::glmer(cbind(male, female) ~ (1|nest_ID),
+  lme4::glmer(cbind(male, female) ~ (1|family_ID),
               data = hatching_sex_ratio[which(hatching_sex_ratio$population == "SP"),], 
               family = binomial)
 
@@ -253,7 +253,7 @@ summary(SP_mod)
 White-fronted plover:
 ```{r}
 WFP_mod <- 
-  lme4::glmer(cbind(male, female) ~ (1|nest_ID),
+  lme4::glmer(cbind(male, female) ~ (1|family_ID),
               data = hatching_sex_ratio[which(hatching_sex_ratio$population == "WFP"),], 
               family = binomial)
 
@@ -264,7 +264,7 @@ summary(WFP_mod)
 Madagascar plover:
 ```{r}
 MP_mod <- 
-  lme4::glmer(cbind(male, female) ~ (1|nest_ID),
+  lme4::glmer(cbind(male, female) ~ (1|family_ID),
               data = hatching_sex_ratio[which(hatching_sex_ratio$population == "MP"),], 
               family = binomial)
 
@@ -276,7 +276,7 @@ Summarize the hatching sex ratio data. First, calculate the proportion of each b
 ```{r}
 HSR_summary <-
   hatching_sex_ratio %>%
-  dplyr::group_by(population, nest_ID) %>%
+  dplyr::group_by(population, family_ID) %>%
   dplyr::summarise(no_males = sum(male),
                    clutch_size = n_distinct(chick_ID))
 
@@ -290,7 +290,7 @@ grand_HSR_summary <-
   dplyr::group_by(population) %>%
   dplyr::summarise(HSR = mean(prop_male),
                    sd = sd(prop_male),
-                   n_nests = n_distinct(nest_ID),
+                   n_nests = n_distinct(family_ID),
                    n_chicks = sum(clutch_size),
                    SE = sd(prop_male) / sqrt(length(prop_male)), 
                    lower_CI =
@@ -420,7 +420,7 @@ mating_df <-
 ```
 determine the number of families used in the mating system analysis (i.e. the sample size)
 ```{r}
-length(unique(mating_df$ID))
+length(unique(mating_df$family_ID))
 ```
 bind the two mates together to make a unique pair
 ```{r}
@@ -1162,11 +1162,11 @@ F) Extract data from the bootstrap output (uncomment these sections if you ran t
 ```
 To save your time with re-running the bootstrap, here are the four datasets produced by the bootstrap:
 
-- **output/bootstrap/AIC_table_juvenile_adult_boot_out.txt** contains the bootstrap output for model selection of juvenile and adult survival based on the mark-recapture analysis run in Program MARK. Each row is a *model* fitted via maximum likelihood to the bootstrapped data sample of each iteration (*iter*). *Phi* describes the model structure for fitting annual survival. *p* describes the model structure for fitting annual encounter probability. *npar* reveals the number of parameters used in a given model. *AICc* is the Akaike Information Criteria statistic corrected for small sample size. *DeltaAICc* is the difference in AICc between a given model and the best fit model of a given iteration. *weight* describes the AIC weight of a given model. *Deviance* describes the deviance of a given model. *population* specifies the population from which the analysis of the iteration was based on.
+- **output/AIC_table_juvenile_adult_boot_out.txt** contains the bootstrap output for model selection of juvenile and adult survival based on the mark-recapture analysis run in Program MARK. Each row is a *model* fitted via maximum likelihood to the bootstrapped data sample of each iteration (*iter*). *Phi* describes the model structure for fitting annual survival. *p* describes the model structure for fitting annual encounter probability. *npar* reveals the number of parameters used in a given model. *AICc* is the Akaike Information Criteria statistic corrected for small sample size. *DeltaAICc* is the difference in AICc between a given model and the best fit model of a given iteration. *weight* describes the AIC weight of a given model. *Deviance* describes the deviance of a given model. *population* specifies the population from which the analysis of the iteration was based on.
 
-- **output/bootstrap/ASR_boot_out.txt** contains the adult sex ratio estimates (*ASR_boot*) of each iteration of the bootstrap procedure. Each row represents an iteration (*iter*). *population* specifies the population from which the analysis of the iteration was based on.
+- **output/ASR_boot_out.txt** contains the adult sex ratio estimates (*ASR_boot*) of each iteration of the bootstrap procedure. Each row represents an iteration (*iter*). *population* specifies the population from which the analysis of the iteration was based on.
 
-- **output/bootstrap/survival_rates_boot_out.txt** contains the sex- and stage-specific survival estimates (*estimate*) of each iteration (*iter*) in the bootstrap procedure. Each row represents a given sex and stage (*sex_age*) in a given iteration. *population* specifies the population from which the analysis of the iteration was based on.
+- **output/survival_rates_boot_out.txt** contains the sex- and stage-specific survival estimates (*estimate*) of each iteration (*iter*) in the bootstrap procedure. Each row represents a given sex and stage (*sex_age*) in a given iteration. *population* specifies the population from which the analysis of the iteration was based on.
 ```{r, cache = TRUE}
 setwd("~/Dropbox/Luke/R_projects/Plover_ASR_Matrix_Modeling")
 
