@@ -5,11 +5,13 @@
 In this repository you can find all the necessary files needed to reproduce the analyses presented in our paper.
 
 *(SM Appendix A)*
+
 **`R/`**
 
   - **Eberhart_Phillips_et_al_SM_Appendix_A.pdf** and **Eberhart_Phillips_et_al_SM_Appendix_A.Rmd** contains the documented code for all analyses, which can be implemented after downloading the datasets provided in the **`data/`** and **`output/`** folders.
 
 *(SM Appendix B)*
+
 **`data/`**
 
 - **Appendix_B_juvenile_adult_mark-recapture_data.txt** contains the mark-recapture field data of juveniles and adults. Each row is a single uniquely marked individual identified by their *bird_ID*. The annual encounter history of an individual is expressed in their *ch*, where a "1" indicates that an individual was encountered and "0" indicates it was not encountered. *sex* describes the molecular sex-type of an individual with "M" for males and "F" for females. *age* describes the stage at which an individual was initially captured, where "J" indicates it was first captured as a chick, and "A" indicates it was first captured as an adult. *population* describes the population in which the individual was sampled from ("KIP" = Kittlitz's plover, "MP" = Madagascar plover, "WFP" = white-fronted plover, "KPT" = Kentish plover Tuzla, "KPM" = Kentish plover Maio, and "SP" = snowy plover).
