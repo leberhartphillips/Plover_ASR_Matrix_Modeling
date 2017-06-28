@@ -1,6 +1,6 @@
 # Overview
-## Demographic causes of adult sex ratio variation in birds and their consequences for parental cooperation
-#### Luke J. Eberhart-Phillips, María Cristina Carmona-Isunza, Orsolya Vincze, Clemens Küpper, Sama Zefania, Tom E. X. Miller, Tamás Székely, Joseph I. Hoffman, and Oliver Krüger
+## Demographic causes of adult sex ratio variation and their consequences for parental cooperation
+#### Luke J. Eberhart-Phillips, Clemens Küpper, María Cristina Carmona-Isunza, Orsolya Vincze, Sama Zefania, Medardo Cruz-López, András Kosztolányi, Tom E. X. Miller, Zoltán Barta, Innes C. Cuthill, Terry Burke, Tamás Székely, Joseph I. Hoffman1, and Oliver Krüger
 
 In this repository you can find all the necessary files needed to reproduce the analyses presented in our paper.
 
@@ -16,7 +16,7 @@ In this repository you can find all the necessary files needed to reproduce the 
 
 - **Appendix_B_hatching_sex_ratio_data.txt** contains the sex and origin of each chick included in our analysis to assess hatching sex ratio. Each row is a chick uniquely identified by their *chick_ID*. The family of origin for each chick is shown in their *family_ID*. *year* describes the year in which the chick hatched. A "1" in either the *male* or *female* column indicates the molecular sex-type of a given chick. *population* describes the population in which the chick was sampled (same notation as above).
 
-- **Appendix_B_parental_care_data.txt** contains the behavioral observations of the care-system for each family. Each row is an observation of a unique family (*family_ID*) within a given *population* (same notation as above). *care_system* expresses the parental care recorded on a given observation (i.e. "male_care", "female_care", or "biparental_care". *hatch_date* indicates the date on which a given brood hatched. *date* indicates the date on which the observation was made.
+- **Appendix_B_parental_care_data.txt** contains the behavioral observations of the care-system for each family. Each row is an observation of a unique family (*family_ID*) within a given *population* (same notation as above). *care_system* expresses the parental care recorded on a given observation (i.e. "male_care", "female_care", or "both_care". *hatch_date* indicates the date on which a given brood hatched. *date* indicates the date on which the observation was made.
   
 **`output/`**
 
