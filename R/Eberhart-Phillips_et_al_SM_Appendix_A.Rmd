@@ -1,8 +1,8 @@
 ---
 title: 'R-code for "Demographic causes of adult sex ratio variation and their consequences for parental cooperation"'
-author: Luke J. Eberhart-Phillips, Clemens Küpper, María Cristina Carmona-Isunza, Orsolya Vincze, Sama Zefania, Medardo Cruz-López, András Kosztolányi, Tom E. X. Miller, Zoltán Barta, Innes C. Cuthill, Terry Burke, Tamás Székely, Joseph I. Hoffman1, and Oliver Krüger
+author: Luke J. Eberhart-Phillips, Clemens Küpper, María Cristina Carmona-Isunza, Orsolya Vincze, Sama Zefania, Medardo Cruz-López, András Kosztolányi, Tom E. X. Miller, Zoltán Barta, Innes C. Cuthill, Terry Burke, Tamás Székely, Joseph I. Hoffman, and Oliver Krüger
 
-date: "June 28, 2017"
+date: "October 9, 2017"
 output:
   pdf_document:
     keep_tex: yes
@@ -40,6 +40,7 @@ library(dplyr)
 library(gridExtra)
 library(grid)
 library(reshape2)
+library(reshape)
 library(RColorBrewer)
 library(Rmisc)
 library(stats)
@@ -262,7 +263,7 @@ White-fronted plover:
 WFP_mod <- 
   lme4::glmer(cbind(male, female) ~ (1|family_ID),
               data = hatching_sex_ratio[which(hatching_sex_ratio$population == "WFP"),], 
-              family = binomial)
+              family = binomial, nAGQ = 5)
 
 # non-significant
 summary(WFP_mod)
@@ -883,6 +884,18 @@ bootstrap_survival_ASR <- function(juvenile_adult_boot, num_boot, start_year,
   juvenile_adult.ddl$p$marked.as.adult = 0
   juvenile_adult.ddl$p$marked.as.adult[juvenile_adult.ddl$p$initial.age.class=="A"]=1
   
+  # Create quadratic time variable (i.e. non-linear annual trend in survival)
+  time <- c(0:(juvenile_adult.proc$nocc[1] - 1))
+  quadratic <- time^2
+  quad_time <- data.frame(time, quadratic)
+  quad_time$time <- c(start_year:(start_year+juvenile_adult.proc$nocc[1]-1))
+  juvenile_adult.ddl$p <- 
+    RMark::merge_design.covariates(juvenile_adult.ddl$Phi,
+                                   quad_time, bygroup = FALSE, bytime = TRUE)
+  juvenile_adult.ddl$Phi <- 
+    RMark::merge_design.covariates(juvenile_adult.ddl$Phi,
+                                   quad_time, bygroup = FALSE, bytime = TRUE)
+  
   # check parameter matrices to see if groups were binned correctly 
   # (uncomment the next three lines to assess)
   # PIMS(mark(juvenile_adult.proc, juvenile_adult.ddl,
@@ -908,7 +921,7 @@ bootstrap_survival_ASR <- function(juvenile_adult_boot, num_boot, start_year,
     # linear variation across time:
     p.time = list(formula =  ~ time)
     # Quadratic variation across time:
-    p.Quadratic = list(formula =  ~ Quadratic)
+    p.Quadratic = list(formula =  ~ quadratic)
     # interaction between sex and factorial year:
     p.sexxTime = list(formula =  ~ sex * Time)
     # interaction between age and factorial year:
@@ -918,9 +931,9 @@ bootstrap_survival_ASR <- function(juvenile_adult_boot, num_boot, start_year,
     # interaction between age and linear year:
     p.agextime = list(formula =  ~ age * time)
     # interaction between sex and Quadratic year:
-    p.sexxQuadratic = list(formula =  ~ sex * Quadratic)
+    p.sexxQuadratic = list(formula =  ~ sex * quadratic)
     # interaction between age and Quadratic year:
-    p.agexQuadratic = list(formula =  ~ age * Quadratic)
+    p.agexQuadratic = list(formula =  ~ age * quadratic)
     # interaction between age and sex:
     p.agexsex = list(formula =  ~ age * sex)
     # additive effects of sex and factorial year:
@@ -932,9 +945,9 @@ bootstrap_survival_ASR <- function(juvenile_adult_boot, num_boot, start_year,
     # additive effects of age and linear year:
     p.age_time = list(formula =  ~ age + time)
     # additive effects of sex and Quadratic year:
-    p.Quadratic_sex = list(formula =  ~ Quadratic + sex)
+    p.Quadratic_sex = list(formula =  ~ quadratic + sex)
     # additive effects of age and Quadratic year:
-    p.Quadratic_age = list(formula =  ~ Quadratic + age)
+    p.Quadratic_age = list(formula =  ~ quadratic + age)
     # additive effects of age and sex:
     p.age_sex = list(formula =  ~ age + sex)
     # additive effects of sex, age, factorial year:
@@ -942,13 +955,13 @@ bootstrap_survival_ASR <- function(juvenile_adult_boot, num_boot, start_year,
     # additive effects of sex, age, linear year:
     p.time_age_sex = list(formula =  ~ time + age + sex)
     # additive effects of sex, age, Quadratic year:
-    p.Quadratic_age_sex = list(formula =  ~ Quadratic + age + sex)
+    p.Quadratic_age_sex = list(formula =  ~ quadratic + age + sex)
     # interaction between factorial year, age and sex:
     p.Time_age_x_sex = list(formula =  ~ Time * age * sex)
     # interaction between linear year, age and sex:
     p.timexagexsex = list(formula =  ~ time * age * sex)
     # interaction between Quadratic year, age and sex:
-    p.Quadraticxagexsex = list(formula =  ~ Quadratic * age * sex)
+    p.Quadraticxagexsex = list(formula =  ~ quadratic * age * sex)
 
     # create a list of candidate models for all the a models above that begin with 
     # either "Phi." or "p."
@@ -1048,19 +1061,19 @@ E) start the bootstrap (takes approx. 130 hours on an Intel XEON E5v2 series sev
 #   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "KIP",
 #          start_year = 2009, num_years = 7, k = 2, HSR = HSR_KIP, h = KIP_h)
 # MP_survival_ASR_bootstrap_result <-
-#   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "MP", 
+#   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "MP",
 #          start_year = 2009, num_years = 7, k = 2, HSR = HSR_MP, h = MP_h)
 # WFP_survival_ASR_bootstrap_result <-
-#   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "WFP", 
+#   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "WFP",
 #          start_year = 2009, num_years = 7, k = 3, HSR = HSR_WFP, h = WFP_h)
 # KPT_survival_ASR_bootstrap_result <-
-#   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "KPT", 
+#   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "KPT",
 #          start_year = 1996, num_years = 6, k = 3, HSR = HSR_KPT, h = KPT_h)
 # KPM_survival_ASR_bootstrap_result <-
-#   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "KPM", 
+#   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "KPM",
 #          start_year = 2007, num_years = 9, k = 3, HSR = HSR_KPM, h = KPM_h)
 # SP_survival_ASR_bootstrap_result <-
-#   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "SP", 
+#   sapply(1:niter, run_bootstrap_survival_ASR, juvenile_adult, pop_name = "SP",
 #          start_year = 2006, num_years = 7, k = 3, HSR = HSR_SP, h = SP_h)
 ```
 F) Extract data from the bootstrap output (uncomment these sections if you ran the bootstrap)
@@ -1183,37 +1196,37 @@ F) Extract data from the bootstrap output (uncomment these sections if you ran t
 # KIP_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
 #        function(x) KIP_survival_ASR_bootstrap_result[[x]])
-# KIP_ASR_boot <- data.frame(ASR_boot = unname(KIP_ASR_boot), iter = 1:niter, population = "KIP")
+# KIP_ASR_boot <- data.frame(ASR_boot_out = unname(KIP_ASR_boot), iter = 1:niter, population = "KIP")
 # 
 # # Madagascar plover
 # MP_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
 #        function(x) MP_survival_ASR_bootstrap_result[[x]])
-# MP_ASR_boot <- data.frame(ASR_boot = unname(MP_ASR_boot), iter = 1:niter, population = "MP")
+# MP_ASR_boot <- data.frame(ASR_boot_out = unname(MP_ASR_boot), iter = 1:niter, population = "MP")
 # 
 # # white-fronted plover
 # WFP_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
 #        function(x) WFP_survival_ASR_bootstrap_result[[x]])
-# WFP_ASR_boot <- data.frame(ASR_boot = unname(WFP_ASR_boot), iter = 1:niter, population = "WFP")
+# WFP_ASR_boot <- data.frame(ASR_boot_out = unname(WFP_ASR_boot), iter = 1:niter, population = "WFP")
 # 
 # # Tuzla Kentish plover
 # KPT_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
 #        function(x) KPT_survival_ASR_bootstrap_result[[x]])
-# KPT_ASR_boot <- data.frame(ASR_boot = unname(KPT_ASR_boot), iter = 1:niter, population = "KPT")
+# KPT_ASR_boot <- data.frame(ASR_boot_out = unname(KPT_ASR_boot), iter = 1:niter, population = "KPT")
 # 
 # # Maio Kentish plover
 # KPM_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
 #        function(x) KPM_survival_ASR_bootstrap_result[[x]])
-# KPM_ASR_boot <- data.frame(ASR_boot = unname(KPM_ASR_boot), iter = 1:niter, population = "KPM")
+# KPM_ASR_boot <- data.frame(ASR_boot_out = unname(KPM_ASR_boot), iter = 1:niter, population = "KPM")
 # 
 # # snowy plover
 # SP_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
 #        function(x) SP_survival_ASR_bootstrap_result[[x]])
-# SP_ASR_boot <- data.frame(ASR_boot = unname(SP_ASR_boot), iter = 1:niter, population = "SP")
+# SP_ASR_boot <- data.frame(ASR_boot_out = unname(SP_ASR_boot), iter = 1:niter, population = "SP")
 # 
 # ASR_boot_out <- rbind(SP_ASR_boot,
 #                       KIP_ASR_boot,
@@ -1226,19 +1239,19 @@ To save your time with re-running the bootstrap, here are the four datasets prod
 
 - **output/AIC_table_juvenile_adult_boot_out.txt** contains the bootstrap output for model selection of juvenile and adult survival based on the mark-recapture analysis run in Program MARK. Each row is a *model* fitted via maximum likelihood to the bootstrapped data sample of each iteration (*iter*). *Phi* describes the model structure for fitting annual survival. *p* describes the model structure for fitting annual encounter probability. *npar* reveals the number of parameters used in a given model. *AICc* is the Akaike Information Criteria statistic corrected for small sample size. *DeltaAICc* is the difference in AICc between a given model and the best fit model of a given iteration. *weight* describes the AIC weight of a given model. *Deviance* describes the deviance of a given model. *population* specifies the population from which the analysis of the iteration was based on.
 
-- **output/ASR_boot_out.txt** contains the adult sex ratio estimates (*ASR_boot*) of each iteration of the bootstrap procedure. Each row represents an iteration (*iter*). *population* specifies the population from which the analysis of the iteration was based on.
+- **output/ASR_boot_out.txt** contains the adult sex ratio estimates (*ASR_boot_out*) of each iteration of the bootstrap procedure. Each row represents an iteration (*iter*). *population* specifies the population from which the analysis of the iteration was based on.
 
 - **output/survival_rates_boot_out.txt** contains the sex- and stage-specific survival estimates (*estimate*) of each iteration (*iter*) in the bootstrap procedure. Each row represents a given sex and stage (*sex_age*) in a given iteration. *population* specifies the population from which the analysis of the iteration was based on.
 ```{r, cache = TRUE}
 setwd("~/Dropbox/Luke/R_projects/Plover_ASR_Matrix_Modeling")
 
-juv_ad_AIC_tables <- 
+AIC_table_juvenile_adult_boot_out <-
   read.table("output/AIC_table_juvenile_adult_boot_out.txt", header = TRUE)
 
-survival_rates_boot <- 
+survival_rates_boot_out <-
   read.table("output/survival_rates_boot_out.txt", header = TRUE)
 
-ASR_boot <- 
+ASR_boot_out <-
   read.table("output/ASR_boot_out.txt", header = TRUE)
 ```
 ***
@@ -1248,10 +1261,10 @@ ASR_boot <-
 
 We visualized sex-bias in stage-specific survival rates with violin plots.  These plots are useful for illustrating the spread of the bootstrap distribution. We have also added the inter-quartile ranges as horizontal bars within the violins. Before plotting, the sex-bias at each stage for each bootstrap iteration needs to be calculated.  This is done with the **sex_diff_surv()** function and specifying the output list from the bootstrap above.
 ```{r}
-sex_diff_survival <- function(survival_rates_boot, pop_name) {
+sex_diff_survival <- function(survival_rates_boot_out, pop_name) {
   
   # subset the data to include only the population of interest
-  survival_rates_boot2 <- dplyr::filter(survival_rates_boot, population == pop_name)
+  survival_rates_boot2 <- dplyr::filter(survival_rates_boot_out, population == pop_name)
   
   # make an empty datarame to store the results
   sex_diff_surv_output <- data.frame(Adult = numeric(niter),
@@ -1282,12 +1295,12 @@ sex_diff_survival <- function(survival_rates_boot, pop_name) {
 ```
 run the function on the bootstrap list from above
 ```{r}
-KIP_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot, pop_name = "KIP")
-WFP_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot, pop_name = "WFP")
-MP_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot, pop_name = "MP")
-KPT_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot, pop_name = "KPT")
-KPM_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot, pop_name = "KPM")
-SP_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot, pop_name = "SP")
+KIP_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot_out, pop_name = "KIP")
+WFP_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot_out, pop_name = "WFP")
+MP_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot_out, pop_name = "MP")
+KPT_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot_out, pop_name = "KPT")
+KPM_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot_out, pop_name = "KPM")
+SP_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot_out, pop_name = "SP")
 
 # stack the results into one dataframe and tidy column names
 All_pops_sex_diff <- rbind(KIP_sex_diff_survival_output,
@@ -1454,17 +1467,17 @@ calculate the confidence interval, mean, and median of the ASR bootstraps
 CI <- 0.95
 
 ASR_boot_summary <- 
-  ASR_boot %>%
+  ASR_boot_out %>%
   dplyr::group_by(population) %>%
-  dplyr::summarise(ucl = stats::quantile(ASR, (1 - CI)/2, na.rm = TRUE),
-                   lcl = stats::quantile(ASR, 1 - (1 - CI)/2, na.rm = TRUE),
-                   avg = mean(ASR),
-                   med = median(ASR))
+  dplyr::summarise(ucl = stats::quantile(ASR_boot_out, (1 - CI)/2, na.rm = TRUE),
+                   lcl = stats::quantile(ASR_boot_out, 1 - (1 - CI)/2, na.rm = TRUE),
+                   avg = mean(ASR_boot_out),
+                   med = median(ASR_boot_out))
 
 # define the factor levels of the population variable so that the populations
 # are in an order that reflects the ASR (male biased to female biased)
-ASR_boot$population <- 
-  factor(ASR_boot$population ,
+ASR_boot_out$population <- 
+  factor(ASR_boot_out$population ,
          levels = c("SP",
                     "KPT",
                     "KPM",
@@ -1487,7 +1500,7 @@ Figure_1b <-
   annotate("text", x = c(0.8), y = c(80),
            label = c("male"), size = 4,
            vjust = c(1), hjust = c(0.5)) +
-  geom_histogram(binwidth = 0.01, data = ASR_boot, aes(x = ASR), fill = "grey30") +
+  geom_histogram(binwidth = 0.01, data = ASR_boot_out, aes(x = ASR_boot_out), fill = "grey30") +
   geom_errorbarh(data = ASR_boot_summary, aes(y = 150, x = lcl, xmin = lcl, xmax = ucl), 
                  color = "black", size = 0.5, linetype = "solid") +
   coord_flip() +
@@ -1525,11 +1538,11 @@ To illustrate the mark-recapture model selection going on during the bootstrap, 
 First, wrangle the bootstrap AIC table output
 ```{r}
 # define the model number
-juv_ad_AIC_tables$model_number <- as.numeric(juv_ad_AIC_tables$model)
+AIC_table_juvenile_adult_boot_out$model_number <- as.numeric(AIC_table_juvenile_adult_boot_out$model)
 
 # summarize the average AIC stats for each candidate model across all 1000 iterations
 juv_ad_AIC_tables_summary <- 
-  juv_ad_AIC_tables %>%
+  AIC_table_juvenile_adult_boot_out %>%
   dplyr::group_by(population,model) %>%
   dplyr::summarise(avg_Delta = mean(DeltaAICc),
                    IQR_Delta = IQR(DeltaAICc),
@@ -1541,29 +1554,29 @@ juv_ad_AIC_tables_summary <- dplyr::arrange(juv_ad_AIC_tables_summary, populatio
 juv_ad_AIC_tables_summary$model_number <- as.numeric(juv_ad_AIC_tables_summary$model)
 
 # merge the two datasets for plotting
-juv_ad_AIC_tables <- 
-  dplyr::left_join(juv_ad_AIC_tables_summary, juv_ad_AIC_tables, by = c("population", "model_number"))
+AIC_table_juvenile_adult_boot_out <- 
+  dplyr::left_join(juv_ad_AIC_tables_summary, AIC_table_juvenile_adult_boot_out, by = c("population", "model_number"))
 
-juv_ad_AIC_tables$p <- 
-  str_replace(juv_ad_AIC_tables$p, pattern = "time", replacement = "year")
+AIC_table_juvenile_adult_boot_out$p <- 
+  str_replace(AIC_table_juvenile_adult_boot_out$p, pattern = "time", replacement = "year")
 
 juv_ad_AIC_tables_summary$model <- 
   str_replace(juv_ad_AIC_tables_summary$model, pattern = "time", replacement = "year")
 
-juv_ad_AIC_tables$p <- 
-  str_replace(juv_ad_AIC_tables$p, pattern = "Quadratic", replacement = "Time^2")
+AIC_table_juvenile_adult_boot_out$p <- 
+  str_replace(AIC_table_juvenile_adult_boot_out$p, pattern = "Quadratic", replacement = "Time^2")
 
 juv_ad_AIC_tables_summary$model <- 
   str_replace(juv_ad_AIC_tables_summary$model, pattern = "Quadratic", replacement = "Time^2")
 
 # extract the model structure explaining resighting probability
-juv_ad_AIC_tables$p <- 
-  factor(juv_ad_AIC_tables$p,
+AIC_table_juvenile_adult_boot_out$p <- 
+  factor(AIC_table_juvenile_adult_boot_out$p,
          levels = c(str_sub(as.character(juv_ad_AIC_tables_summary$model), 
                             start = 18, end = str_length(juv_ad_AIC_tables_summary$model)-1)[1:26]))
 
-juv_ad_AIC_tables$population <- 
-  factor(juv_ad_AIC_tables$population,
+AIC_table_juvenile_adult_boot_out$population <- 
+  factor(AIC_table_juvenile_adult_boot_out$population,
          levels = c("SP",
                     "KPT",
                     "KPM",
@@ -1577,8 +1590,8 @@ roles <- function(x) sub("[^_]*_","",x )
 plot the overall model ranks of the juvenile and adult survival anlaysis based on Delta AIC. We specified that the model axis is ranked according to their AIC statistics.
 ```{r}
 Figure_S4_Delta_AIC <- 
-  ggplot(cbind(as.data.frame(juv_ad_AIC_tables), 
-               V4=paste(juv_ad_AIC_tables$population,juv_ad_AIC_tables$p,sep="_")), 
+  ggplot(cbind(as.data.frame(AIC_table_juvenile_adult_boot_out), 
+               V4=paste(AIC_table_juvenile_adult_boot_out$population,AIC_table_juvenile_adult_boot_out$p,sep="_")), 
          aes(x=reorder(V4,DeltaAICc), y=DeltaAICc) ) + 
   theme_bw() +
   geom_boxplot(width = 0.6, fill = "grey70", outlier.size = 0.000, size = 0.2) +
@@ -1606,8 +1619,8 @@ Figure_S4_Delta_AIC <-
 plot the overall model ranks of the juvenile and adult survival anlaysis based on AIC weight. We specified that the model axis is ranked according to their AIC statistics.
 ```{r, fig.height=6, fig.width=11, fig.align="center",out.extra='angle=270'}
 Figure_S4_AIC_weight <- 
-  ggplot(cbind(as.data.frame(juv_ad_AIC_tables), 
-               V4=paste(juv_ad_AIC_tables$population,juv_ad_AIC_tables$p,sep="_")),
+  ggplot(cbind(as.data.frame(AIC_table_juvenile_adult_boot_out), 
+               V4=paste(AIC_table_juvenile_adult_boot_out$population,AIC_table_juvenile_adult_boot_out$p,sep="_")),
          aes(x=reorder(V4,DeltaAICc), y=weight) ) + 
   theme_bw() +
   geom_boxplot(width = 0.6, fill = "grey70", outlier.size = 0.000, size = 0.2) +
@@ -1927,12 +1940,12 @@ LTRE_analysis <-
 ```
 define the iterations variable as a factor
 ```{r}
-survival_rates_boot$iter <- as.factor(survival_rates_boot$iter)
+survival_rates_boot_out$iter <- as.factor(survival_rates_boot_out$iter)
 ```
 summarise the bootstrap stage- and sex-specific survival rates for the deterministic matrix
 ```{r}
 survival_rates_boot_summary <-
-  Rmisc::summarySE(survival_rates_boot,
+  Rmisc::summarySE(survival_rates_boot_out,
                    measurevar = "estimate",
                    groupvars = c("population", "Sex_Age"),
                    conf.interval = 0.95)
@@ -2031,6 +2044,7 @@ SP_VR_treat <-
 ```
 Define vital rates of the M prime matrix (i.e., average between a "control matrix" and the "treatment matrix"). The control matrix is a matrix in which the female vital rates are set to the male vital rates, and the treatment matrix is the matrix containing the sex-specific values estimated from the field (see formula 8 on page 133 of Veran and Beissinger (2009)). The M-prime matrix is the average matrix of the treatment and control matricies:
 ```{r}
+
 KIP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                                                    population == "KIP")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
@@ -2157,6 +2171,139 @@ SP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                                                population == "SP")[3,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "SP")[3,4])/2,
+                  # Define h (harem size) and k (clutch size)
+                  h = (SP_h+1)/2,
+                  k = 3,
+                  # Define primary sex ratio
+                  HSR = (HSR_SP+0.5)/2)
+
+# Set to female rates (in response to reviewer)
+KIP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
+                                                   population == "KIP")[2,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "KIP")[2,4])/2,
+                  F_Adt_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "KIP")[1,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "KIP")[1,4])/2,
+                  M_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "KIP")[4,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "KIP")[2,4])/2,
+                  M_Adt_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "KIP")[3,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "KIP")[1,4])/2,
+                  # Define h (harem size) and k (clutch size)
+                  h = (KIP_h+1)/2,
+                  k = 2,
+                  # Define primary sex ratio
+                  HSR = (HSR_KIP+0.5)/2)
+
+KPT_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                                   population == "KPT")[2,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "KPT")[2,4])/2,
+                  F_Adt_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "KPT")[1,4] +
+                                   dplyr::filter(survival_rates_boot_summary,
+                                                population == "KPT")[1,4])/2,
+                  M_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "KPT")[4,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "KPT")[2,4])/2,
+                  M_Adt_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "KPT")[3,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "KPT")[1,4])/2,
+                  # Define h (harem size) and k (clutch size)
+                  h = (KPT_h+1)/2,
+                  k = 3,
+                  # Define primary sex ratio
+                  HSR = (HSR_KPT+0.5)/2)
+
+KPM_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                                   population == "KPM")[2,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "KPM")[2,4])/2,
+                  F_Adt_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "KPM")[1,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "KPM")[1,4])/2,
+                  M_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "KPM")[4,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "KPM")[2,4])/2,
+                  M_Adt_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "KPM")[3,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "KPM")[1,4])/2,
+                  # Define h (harem size) and k (clutch size)
+                  h = (KPM_h+1)/2,
+                  k = 3,
+                  # Define primary sex ratio
+                  HSR = (HSR_KPM+0.5)/2)
+
+MP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
+                                                  population == "MP")[2,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "MP")[2,4])/2,
+                  F_Adt_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "MP")[1,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "MP")[1,4])/2,
+                  M_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "MP")[4,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "MP")[2,4])/2,
+                  M_Adt_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "MP")[3,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "MP")[1,4])/2,
+                  # Define h (harem size) and k (clutch size)
+                  h = (MP_h+1)/2,
+                  k = 2,
+                  # Define primary sex ratio
+                  HSR = (HSR_MP+0.5)/2)
+
+WFP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                                   population == "WFP")[2,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "WFP")[2,4])/2,
+                  F_Adt_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "WFP")[1,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "WFP")[1,4])/2,
+                  M_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "WFP")[4,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "WFP")[2,4])/2,
+                  M_Adt_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "WFP")[3,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "WFP")[1,4])/2,
+                  # Define h (harem size) and k (clutch size)
+                  h = (WFP_h+1)/2,
+                  k = 3,
+                  # Define primary sex ratio
+                  HSR = (HSR_WFP+0.5)/2)
+
+SP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                                  population == "SP")[2,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "SP")[2,4])/2,
+                  F_Adt_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "SP")[1,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "SP")[1,4])/2,
+                  M_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "SP")[4,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "SP")[2,4])/2,
+                  M_Adt_survl = (dplyr::filter(survival_rates_boot_summary, 
+                                               population == "SP")[3,4] +
+                                   dplyr::filter(survival_rates_boot_summary, 
+                                                 population == "SP")[1,4])/2,
                   # Define h (harem size) and k (clutch size)
                   h = (SP_h+1)/2,
                   k = 3,
@@ -2614,17 +2761,17 @@ ASR_pc_boot <- function(nreps = 10000, len = 100) {
   
   # the bootstrap for-loop
   for (i in 1:nreps) {
-    ASR_sample <- ASR_boot %>% group_by(population) %>% sample_n(size = 1)
+    ASR_sample <- ASR_boot_out %>% group_by(population) %>% sample_n(size = 1)
     ASR_sample_pc <- left_join(ASR_sample, care_summary_prop, 
                                by = "population")
     
     # quadratic model predicting the proportion of families exhibiting 
     # parental cooperation based on the ASR estimate
     mod <- 
-      lm(both_care ~ ASR + I(ASR^2),
+      lm(both_care ~ ASR_boot_out + I(ASR_boot_out^2),
           data = ASR_sample_pc)
     asr <- seq(0, 1, len = 100)
-    prd <- predict(mod, data.frame(ASR = asr))
+    prd <- predict(mod, data.frame(ASR_boot_out = asr))
     
     # store results
     storage_matrix[i,] <- prd
