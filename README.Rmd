@@ -30,4 +30,4 @@ In this repository you can find all the necessary files needed to reproduce the 
 
 - **survival_rates_boot_out.txt** contains the sex- and stage-specific survival estimates (*estimate*) of each iteration (*iter*) in the bootstrap procedure. Each row represents a given sex and stage (*sex_age*) in a given iteration. *population* specifies the population from which the analysis of the iteration was based on (same notation as above).
 
-Last updated: June 28, 2017
+Last updated: October 9, 2017
