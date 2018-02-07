@@ -2,7 +2,7 @@
 title: 'R-code for "Demographic causes of adult sex ratio variation and their consequences for parental cooperation"'
 author: Luke J. Eberhart-Phillips, Clemens Küpper, María Cristina Carmona-Isunza, Orsolya Vincze, Sama Zefania, Medardo Cruz-López, András Kosztolányi, Tom E. X. Miller, Zoltán Barta, Innes C. Cuthill, Terry Burke, Tamás Székely, Joseph I. Hoffman, and Oliver Krüger
 
-date: "October 9, 2017"
+date: "February 7, 2018"
 output:
   pdf_document:
     keep_tex: yes
@@ -33,6 +33,9 @@ The structure of the code we present here roughly follows the analyses presented
 # install.packages("stats")
 # install.packages("lme4")
 # install.packages("magrittr")
+# install.packages("MultinomialCI")
+# install.packages("ggrepel")
+# install.packages("truncnorm")
 library(RMark) 
 library(stringr)
 library(ggplot2)
@@ -46,7 +49,9 @@ library(Rmisc)
 library(stats)
 library(lme4)
 library(magrittr)
-library(extrafont)
+library(MultinomialCI)
+library(ggrepel)
+library(truncnorm)
 ```
 ***
 ## Loading data
@@ -103,7 +108,8 @@ parental_care_data$brood_period <- ifelse(parental_care_data$brood_age < 10, "ea
 
 Transform the *care_system* variable into a numeric to aquire a ranking system of the care levels (i.e., both_care = 1, female_care = 2, male_care = 3).
 ```{r}
-parental_care_data$care_system_num <- as.numeric(as.factor(parental_care_data$care_system))
+parental_care_data$care_system_num <- 
+  as.numeric(as.factor(parental_care_data$care_system))
 ```
 
 To account for surveyor oversight while recording tending parents (i.e., misidentifying a bi-parental familiy as uni-parental), bi-parental status always trumped female_care or male_care in broods where there were observations of different states within a single *brood_period*. This step summarizes all the observations a given brood and assigns the lowest level observed (i.e., both_care = 1, female_care = 2, male_care = 3) to that brood. We were comfortable with *female_care* trumping *male_care* because female uni-parental care is a rare in plovers, so it is a conservative approach.
@@ -116,38 +122,63 @@ parental_care_summary <-
 
 Calculate the proportion of late families in each population that exhibit *both_care*, *female_care*, or *male_care*.
 ```{r}
-# summarize the absolute number of families for each popualtion that are in the "late" brood_period.
+# summarize the absolute number of families for each population that are in the 
+# "late" brood_period.
 sample_sizes <- reshape::cast(filter(parental_care_summary, brood_period == "late") %>%
                               dplyr::group_by(population, care_system) %>%
                               dplyr::summarise(n = n_distinct(family_ID)),
                               population ~ care_system, sum)
+sample_sizes$n <- rowSums(sample_sizes[, c(2:4)])
 
 # create a matrix of the summary
-care_summary <- as.matrix(sample_sizes[, -1])
+care_summary <- as.matrix(sample_sizes[, -c(1,5)])
 rownames(care_summary) <- sample_sizes[,1]
 
-# calculate the proportions for each popualtion
-care_summary_prop <- prop.table(care_summary,1)
+# calculate the proportions for each population
+care_summary_prop <- prop.table(care_summary, 1)
 care_summary_prop <- as.data.frame(matrix(as.numeric(care_summary_prop), ncol = 3))
 care_summary_prop$population <- c("KIP", "KPM", "KPT", "MP", "SP", "WFP")
-colnames(care_summary_prop) <- c("both_care", "female_care", "male_care", "population")
+colnames(care_summary_prop) <- c("bc", "fc", "mc", "population")
 care_summary_prop$population <- 
   factor(care_summary_prop$population ,
          levels = c("SP", "KPT", "KPM", "MP", "WFP", "KIP"))
 care_summary_prop <- care_summary_prop[,c(4,1:3)]
 
-# care_summary <- as.data.frame(care_summary)
-# care_summary$totals <- rowSums(care_summary)
+# estimate the multinomial 95% confidence intervals of parental care
+lcl_df <- as.data.frame(rbind(
+  t(MultinomialCI::multinomialCI(care_summary[1,], 0.05)[,1]),
+  t(MultinomialCI::multinomialCI(care_summary[2,], 0.05)[,1]),
+  t(MultinomialCI::multinomialCI(care_summary[3,], 0.05)[,1]),
+  t(MultinomialCI::multinomialCI(care_summary[4,], 0.05)[,1]),
+  t(MultinomialCI::multinomialCI(care_summary[5,], 0.05)[,1]),
+  t(MultinomialCI::multinomialCI(care_summary[6,], 0.05)[,1])))
+colnames(lcl_df) <- c("bc_lower_ci", "fc_lower_ci", "mc_lower_ci")
+
+ucl_df <- as.data.frame(rbind(
+  t(MultinomialCI::multinomialCI(care_summary[1,], 0.05)[,2]),
+  t(MultinomialCI::multinomialCI(care_summary[2,], 0.05)[,2]),
+  t(MultinomialCI::multinomialCI(care_summary[3,], 0.05)[,2]),
+  t(MultinomialCI::multinomialCI(care_summary[4,], 0.05)[,2]),
+  t(MultinomialCI::multinomialCI(care_summary[5,], 0.05)[,2]),
+  t(MultinomialCI::multinomialCI(care_summary[6,], 0.05)[,2])))
+colnames(ucl_df) <- c("bc_upper_ci", "fc_upper_ci", "mc_upper_ci")
+
+# join all estimates together
+care_summary_total <- 
+  left_join(care_summary_prop, sample_sizes, by = c("population"))
+care_summary_total <- 
+  cbind(care_summary_total, lcl_df, ucl_df)
 ```
 
 Table S2 in supplementary materials
 ```{r}
-cbind(care_summary_prop, sample_sizes[,-1])
+care_summary_total
 ```
 
 Figure 1c. Plot the pie charts illustrating the population-specific variation parental care
-```{r, fig.width=4.75, fig.height=1.8, fig.align="center"}
-# define the levels of the population variable to determine the order of the plots in the figure.
+```{r fig.align="center", fig.height=1.8, fig.width=4.75}
+# define the levels of the population variable to determine the order of the 
+# plots in the figure.
 parental_care_summary$population <- factor(parental_care_summary$population,
                                            levels = c("SP",
                                                       "KPT",
@@ -164,31 +195,30 @@ sample_sizes$n <- rowSums(sample_sizes[, -1])
 
 # setup the sample size labels in the plot 
 n_labs_parents <- c(
-  'SP'= paste("n = ", sample_sizes[sample_sizes$population == "SP", "n"], sep = ""),
-  'KPT' = paste("n = ", sample_sizes[sample_sizes$population == "KPT", "n"], sep = ""),
-  'KPM' = paste("n = ", sample_sizes[sample_sizes$population == "KPM", "n"], sep = ""),
-  'MP' = paste("n = ", sample_sizes[sample_sizes$population == "MP", "n"], sep = ""),
-  'WFP' = paste("n = ", sample_sizes[sample_sizes$population == "WFP", "n"], sep = ""),
-  'KIP' = paste("n = ", sample_sizes[sample_sizes$population == "KIP", "n"], sep = "")
+  'SP'= paste("C. nivosus\nMexico\nn = ", 
+              sample_sizes[sample_sizes$population == "SP", "n"], sep = ""),
+  'KPT' = paste("C. alexandrinus\nTurkey\nn = ", 
+                sample_sizes[sample_sizes$population == "KPT", "n"], sep = ""),
+  'KPM' = paste("C. alexandrinus\nCape Verde\nn = ", 
+                sample_sizes[sample_sizes$population == "KPM", "n"], sep = ""),
+  'MP' = paste("C. thoracicus\nMadagascar\nn = ", 
+               sample_sizes[sample_sizes$population == "MP", "n"], sep = ""),
+  'WFP' = paste("C. marginatus\nMadagascar\nn = ", 
+                sample_sizes[sample_sizes$population == "WFP", "n"], sep = ""),
+  'KIP' = paste("C. pecuarius\nMadagascar\nn = ", 
+                sample_sizes[sample_sizes$population == "KIP", "n"], sep = "")
 )
 
 # draw the plot
-Figure_1c <-
+Figure_3b <-
   ggplot(data = filter(parental_care_summary, brood_period == "late")) +
   geom_bar(mapping = aes(x = factor(1), fill = care_system), width = 1, position = "fill", 
            size = 0.2, color = "#4d4d4d", alpha = 0.6) +
   coord_polar(theta = "y") +
-  facet_grid(. ~ population, labeller = as_labeller(n_labs_parents)) +#, switch = "x") +
+  facet_grid(. ~ population, labeller = as_labeller(n_labs_parents)) +
   theme_bw() +
-  theme(#text=element_text(family="Franklin Gothic Book"),
-        legend.position="none",
-        legend.justification = c(0, 1),
-        legend.text=element_text(size=11),
-        legend.title=element_blank(),
-        legend.key.height=unit(0.8,"line"),
-        legend.key.width=unit(0.8,"line"),
-        legend.background = element_rect(fill=NA),
-        axis.title.x = element_text(size=10, vjust=-0.5),
+  theme(legend.position="none",
+        axis.title.x = element_text(size=8, vjust=-0.5),
         axis.text.y  = element_blank(),
         axis.title.y = element_blank(),
         axis.text.x  = element_blank(),
@@ -200,11 +230,12 @@ Figure_1c <-
         panel.border = element_blank(),
         plot.margin = unit(c(0.4,0.2,0,1.2), "cm"),
         strip.background = element_blank(),
-        strip.text = element_text(size=10),
+        strip.text = element_text(size=7),
         panel.spacing = unit(0.3, "lines")) +
   scale_fill_manual(values = cbPalette) +
-  ylab("Proportion of families with\nfemale care, male care, or parental cooperation")
-Figure_1c
+  ylab("Proportion of families with\nfemale care (orange), male care (green),
+       or parental cooperation (white)")
+Figure_3b
 ```
 
 ***
@@ -334,11 +365,11 @@ HSR <- c(plogis(coef(m_SP)),
           plogis(coef(m_KIP)))
 
 population <- c("SP",
-           "KPT",
-           "KPM",
-           "MP",
-           "WFP",
-           "KIP")
+                "KPT",
+                "KPM",
+                "MP",
+                "WFP",
+                "KIP")
 
 HSR_ci <- data.frame(population, HSR, lower_ci, upper_ci)
 
@@ -353,10 +384,12 @@ HSR_sample_size
 
 Figure 1a. Plot the variation in hatching sex ratio across the 6 populations.
 ```{r, fig.width=6, fig.height=2, fig.align="center"}
-# create a column with the sample sizes used for each population (will be a label in the plot)
+# create a column with the sample sizes used for each population (will be a label 
+# in the plot)
 HSR_sample_size$n_nests_sample_size <- paste("n = ", HSR_sample_size$n_nests, sep = "")
 
-# define the levels of the population variable to determine the order of the popualtions in the figure.
+# define the levels of the population variable to determine the order of the 
+# populations in the figure.
 HSR_sample_size$population <- 
   factor(HSR_sample_size$population ,
          levels = c("SP",
@@ -399,9 +432,7 @@ Figure_1a_HSR_background <-
   annotate("text", x = c(3), y = c(0.1),
            label = c("female"), size = 4,
            vjust = c(0), hjust = c(0.5)) +
-  theme(#text = element_text(family="Franklin Gothic Book", 
-        #                    colour = "white"),
-        legend.position = "none",
+  theme(legend.position = "none",
         legend.background = element_rect(fill = NA),
         axis.title.y = element_text(size = 10, colour = "white"),
         axis.text.y = element_text(size = 9, colour = "white"),
@@ -426,12 +457,9 @@ Figure_1a_HSR <-
   theme_bw() +
   geom_pointrange(data = HSR_ci, aes(y = HSR, x = population, ymin = lower_ci, 
                                                 ymax = upper_ci), size = 0.2) + 
-  geom_text(aes(y = 0.05, x = population, label = n_nests_sample_size#, 
-                #family = "Franklin Gothic Book"
-                ), 
+  geom_text(aes(y = 0.05, x = population, label = n_nests_sample_size), 
             data = HSR_sample_size, size = 3) +
-  theme(#text = element_text(family="Franklin Gothic Book"),
-        legend.position = "none",
+  theme(legend.position = "none",
         panel.background = element_rect(fill = "transparent",colour = NA), 
         plot.background = element_rect(fill = "transparent",colour = NA), 
         axis.title.y = element_text(size = 10),
@@ -491,7 +519,7 @@ determine how many mating attempts each individual had each year
 females <- reshape2::dcast(mating_df, female + population ~ year)
 males <- reshape2::dcast(mating_df, male + population ~ year)
 ```
-determine how many different mates each individual had over their lifetime in the popualtion
+determine how many different mates each individual had over their lifetime in the population
 ```{r}
 number_males_p_female <- 
   stats::aggregate(male ~ female, mating_df, function(x) length(unique(x)))
@@ -535,6 +563,11 @@ mating <- rbind(females_no_1, males_no_1)
 calculate the number of mates per year
 ```{r}
 mating$no_mates_per_year <- mating$mate/mating$years
+
+# corrected for long-term monogamy (i.e., mu in Eq. 4), whereby 1 is given to 
+# individuals that have <1 mate per year
+mating$no_mates_per_year_mono <- 
+  ifelse(mating$no_mates_per_year < 1, 1, mating$no_mates_per_year)
 ```
 summarise the matings by sex and determine "h", the average annual number of mates per female
 ```{r}
@@ -542,66 +575,50 @@ sex_specific_mating_system <-
   mating%>%
   dplyr::group_by(population, sex)%>%
   dplyr::summarise(mean_annual_no_mates = mean(no_mates_per_year),
+                   mean_annual_no_mates_mono = mean(no_mates_per_year_mono),
                    var_annual_no_mates = var(no_mates_per_year),
                    median_annual_no_mates = median(no_mates_per_year),
                    sd_annual_no_mates = sd(no_mates_per_year),
+                   sd_annual_no_mates_mono = sd(no_mates_per_year_mono),
                    n = n_distinct(focal))
 
-sex_specific_mating_system$sample_size <- paste("n = ", sex_specific_mating_system$n, sep = "")
+sex_specific_mating_system$sample_size <- 
+  paste("n = ", sex_specific_mating_system$n, sep = "")
 
-# When the mean annual number of mates is less than 1, the mating system is
-# deemed monogamous and h = 1, but when females have more than 1 mates per year,
-# the mating system is deemed polyandrous and h must be less than 1 (thus the 
-# inverse is calculated
-KIP_h  <- 
-  ifelse(as.numeric(sex_specific_mating_system[which(sex_specific_mating_system$sex == "Female" &
-                                                       sex_specific_mating_system$population == "KIP"),
-                                               3]) < 1, 1,
-         1/as.numeric(sex_specific_mating_system[which(sex_specific_mating_system$sex == "Female" &
-                                                         sex_specific_mating_system$population == "KIP"),
-                                                 3]))
+# To obtain a female-based h index for each population the inverse of the mean 
+# mu is calculated (i.e., Eq. 5)
+KIP_h <- 
+  1/as.numeric(sex_specific_mating_system[which(
+    sex_specific_mating_system$sex == "Female" &
+    sex_specific_mating_system$population == "KIP"), "mean_annual_no_mates_mono"])
 
 MP_h <- 
-  ifelse(as.numeric(sex_specific_mating_system[which(sex_specific_mating_system$sex == "Female" &
-                                                       sex_specific_mating_system$population == "MP"),
-                                               3]) < 1, 1,
-         1/as.numeric(sex_specific_mating_system[which(sex_specific_mating_system$sex == "Female" &
-                                                         sex_specific_mating_system$population == "MP"),
-                                                 3]))
+  1/as.numeric(sex_specific_mating_system[which(
+    sex_specific_mating_system$sex == "Female" &
+    sex_specific_mating_system$population == "MP"), "mean_annual_no_mates_mono"])
 
 WFP_h <- 
-  ifelse(as.numeric(sex_specific_mating_system[which(sex_specific_mating_system$sex == "Female" &
-                                                       sex_specific_mating_system$population == "WFP"),
-                                               3]) < 1, 1,
-         1/as.numeric(sex_specific_mating_system[which(sex_specific_mating_system$sex == "Female" &
-                                                         sex_specific_mating_system$population == "WFP"),
-                                                 3]))
+  1/as.numeric(sex_specific_mating_system[which(
+    sex_specific_mating_system$sex == "Female" &
+    sex_specific_mating_system$population == "WFP"), "mean_annual_no_mates_mono"])
 
 KPT_h  <- 
-  ifelse(as.numeric(sex_specific_mating_system[which(sex_specific_mating_system$sex == "Male" &
-                                                       sex_specific_mating_system$population == "KPT"),
-                                               3]) < 1, 1,
-         1/as.numeric(sex_specific_mating_system[which(sex_specific_mating_system$sex == "Male" &
-                                                         sex_specific_mating_system$population == "KPT"),
-                                                 3]))
+  1/as.numeric(sex_specific_mating_system[which(
+    sex_specific_mating_system$sex == "Male" &
+    sex_specific_mating_system$population == "KPT"), "mean_annual_no_mates_mono"])
 
 KPM_h <- 
-  ifelse(as.numeric(sex_specific_mating_system[which(sex_specific_mating_system$sex == "Female" &
-                                                       sex_specific_mating_system$population == "KPM"),
-                                               3]) < 1, 1,
-         1/as.numeric(sex_specific_mating_system[which(sex_specific_mating_system$sex == "Female" &
-                                                         sex_specific_mating_system$population == "KPM"),
-                                                 3]))
+  1/as.numeric(sex_specific_mating_system[which(
+    sex_specific_mating_system$sex == "Female" &
+    sex_specific_mating_system$population == "KPM"), "mean_annual_no_mates_mono"])
 
 SP_h <- 
-  ifelse(as.numeric(sex_specific_mating_system[which(sex_specific_mating_system$sex == "Female" &
-                                                       sex_specific_mating_system$population == "SP"),
-                                               3]) < 1, 1,
-         1/as.numeric(sex_specific_mating_system[which(sex_specific_mating_system$sex == "Female" &
-                                                         sex_specific_mating_system$population == "SP"),
-                                                 3]))
+  1/as.numeric(sex_specific_mating_system[which(
+    sex_specific_mating_system$sex == "Female" &
+    sex_specific_mating_system$population == "SP"), "mean_annual_no_mates_mono"])
 
-# display the h values for each population (these are used in the mating function of the matrix model)
+# display the h values for each population (these are used in the mating function 
+# of the matrix model)
 KIP_h
 MP_h
 WFP_h
@@ -634,14 +651,11 @@ Figure_S3_background <-
            fill = RColorBrewer::brewer.pal(8, "Greys")[c(5)]) + 
   annotate("text", x = c(3), y = c(0.7),
            label = c("Monogamous"), size = 3,
-           # family="Franklin Gothic Book", 
            vjust = c(1), hjust = c(0.5)) +
   annotate("text", x = c(3), y = c(1.75),
            label = c("Polyandrous"), size = 3,
-           # family="Franklin Gothic Book", 
            vjust = c(0), hjust = c(0.5)) +
-  theme(#text = element_text(family="Franklin Gothic Book", colour = "white"),
-        legend.position = "none",
+  theme(legend.position = "none",
         legend.background = element_rect(fill = NA),
         axis.title.y = element_text(size = 10, colour = "white"),
         axis.text.y = element_text(size = 9, colour = "white"),
@@ -657,7 +671,7 @@ Figure_S3_background <-
         plot.margin = unit(c(0.2, 0.2, 0.5,0.2), "cm")) +
   scale_y_continuous(expand = c(0, 0)) +
   scale_x_continuous(expand = c(0, 0)) +
-  ylab("Per capita annual number of\nmates per female (± 1 SD)")
+  ylab("Number of unique mates\nper year per female (mu ± 1 SD)")
 
 # draw the data
 Figure_S3 <-
@@ -666,17 +680,17 @@ Figure_S3 <-
   geom_jitter(aes(y = no_mates_per_year, x = population),
               data = mating[which(mating$sex == "Female"),], width = 0.1, alpha = 0.75, 
               size = 0.3, fill = "white", color = "white", shape = 16) +
-  geom_pointrange(data = sex_specific_mating_system[which(sex_specific_mating_system$sex == "Female"),], 
-                  aes(y = mean_annual_no_mates, x = population, 
-                      ymin = (mean_annual_no_mates-sd_annual_no_mates), 
-                      ymax = (mean_annual_no_mates+sd_annual_no_mates)), size = 0.2) +
-  geom_text(aes(y = 0.2, x = population, label = sample_size#, 
-                # family = "Franklin Gothic Book"
-                ), 
-            data = sex_specific_mating_system[which(sex_specific_mating_system$sex == "Female"),],
+  geom_pointrange(data = sex_specific_mating_system[which(
+    sex_specific_mating_system$sex == "Female"),], 
+                  aes(y = mean_annual_no_mates_mono, x = population, 
+                      ymin = (mean_annual_no_mates_mono-sd_annual_no_mates_mono), 
+                      ymax = (mean_annual_no_mates_mono+sd_annual_no_mates_mono)), 
+    size = 0.2) +
+  geom_text(aes(y = 0.2, x = population, label = sample_size), 
+            data = sex_specific_mating_system[which(
+              sex_specific_mating_system$sex == "Female"),],
             size = 3) +
-  theme(#text = element_text(family="Franklin Gothic Book"),
-        legend.position = "none",
+  theme(legend.position = "none",
         panel.background = element_rect(fill = "transparent",colour = NA), 
         plot.background = element_rect(fill = "transparent",colour = NA), 
         axis.title.y = element_text(size = 10),
@@ -691,7 +705,7 @@ Figure_S3 <-
         panel.spacing = unit(0.75, "lines"),
         plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "cm")) +
   scale_x_discrete(labels = population_names) +
-  ylab("Per capita annual number of\nmates per female (± 1 SD)")
+  ylab("Number of unique mates\nper year per female (mu ± 1 SD)")
 
 # overlay the two plots ontop of eachother to make the final plot
 grid::pushViewport( grid::viewport(
@@ -699,27 +713,6 @@ grid::pushViewport( grid::viewport(
 print(Figure_S3_background, newpage = FALSE)
 print(Figure_S3, newpage = FALSE)
 grid::popViewport()
-```
-
-For each population, statistically test the sex-difference in the per capita annual number of mates by using a non-parametric Mann-Whitney-Wilcoxon Test.
-```{r}
-# significantly female-biased
-wilcox.test(no_mates_per_year ~ sex, data = filter(mating, population == "SP"))
-
-# non-significant
-wilcox.test(no_mates_per_year ~ sex, data = filter(mating, population == "KPT")) 
-
-# non-significant
-wilcox.test(no_mates_per_year ~ sex, data = filter(mating, population == "KPM")) 
-
-# non-significant
-wilcox.test(no_mates_per_year ~ sex, data = filter(mating, population == "MP")) 
-
-# non-significant
-wilcox.test(no_mates_per_year ~ sex, data = filter(mating, population == "WFP")) 
-
-# non-significant
-wilcox.test(no_mates_per_year ~ sex, data = filter(mating, population == "KIP")) 
 ```
 
 ***
@@ -739,7 +732,7 @@ The following two functions are needed to setup the projection matrix and estima
 ```{r}
 plover_matrix <- 
   function(demographic_rates){
-      # Define plover life-stages of the two-sex plover matrix model
+      # Define plover life stages of the two-sex plover matrix model
       stages <- c("F_1st_yr",  "F_Adt",  "M_1st_yr",  "M_Adt")
       # Build the 4x4 matrix
       result <- 
@@ -968,11 +961,13 @@ bootstrap_survival_ASR <- function(juvenile_adult_boot, num_boot, start_year,
     cml <-  RMark::create.model.list("CJS")
     
     # specify the data, design matrix, delete unneeded output files, and 
-    # run the models in Program MARK
+    # run the models in Program MARK. To speep up computation, specify 
+    # silent = TRUE, output = FALSE, wrap = FALSE
     model.list <-  RMark::mark.wrapper(cml, data = juvenile_adult.proc, 
-                                       ddl = juvenile_adult.ddl, delete = TRUE)
+                                       ddl = juvenile_adult.ddl, delete = TRUE,
+                                       silent = TRUE, output = FALSE, wrap = FALSE)
     
-    # output the model list and sotre the results
+    # output the model list and store the results
     return(model.list)
   }
   
@@ -1048,7 +1043,9 @@ run_bootstrap_survival_ASR <- function(num_boot, juvenile_adult, pop_name,
   bootstrap_dataframe <- bootstrap_data(juvenile_adult, pop_name)
   
   # run the survival analysis and ASR deduction on the sampled data
-  result <- bootstrap_survival_ASR(bootstrap_dataframe, num_boot, start_year, num_years, k, h, HSR)
+  result <- 
+    bootstrap_survival_ASR(bootstrap_dataframe, num_boot, 
+                           start_year, num_years, k, h, HSR)
 }
 ```
 D) Specify the number of iterations to run in the bootstrap (1000 was used in our analysis).
@@ -1136,7 +1133,6 @@ F) Extract data from the bootstrap output (uncomment these sections if you ran t
 #                                            SP_AIC_table_juvenile_adult_boot)
 ```
 ### Survival rates for each iteration  
-
 (uncomment these sections if you ran the bootstrap)
 ```{r}
 # # Kittlitz's plover
@@ -1189,44 +1185,49 @@ F) Extract data from the bootstrap output (uncomment these sections if you ran t
 #                                  WFP_survival_rates_boot)
 ```
 ### ASR estimate for each iteration  
-
 (uncomment these sections if you ran the bootstrap)
 ```{r}
 # # Kittlitz'z plover
 # KIP_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
 #        function(x) KIP_survival_ASR_bootstrap_result[[x]])
-# KIP_ASR_boot <- data.frame(ASR_boot_out = unname(KIP_ASR_boot), iter = 1:niter, population = "KIP")
+# KIP_ASR_boot <- data.frame(ASR_boot_out = unname(KIP_ASR_boot), iter = 1:niter, 
+#                            population = "KIP")
 # 
 # # Madagascar plover
 # MP_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
 #        function(x) MP_survival_ASR_bootstrap_result[[x]])
-# MP_ASR_boot <- data.frame(ASR_boot_out = unname(MP_ASR_boot), iter = 1:niter, population = "MP")
+# MP_ASR_boot <- data.frame(ASR_boot_out = unname(MP_ASR_boot), iter = 1:niter, 
+#                           population = "MP")
 # 
 # # white-fronted plover
 # WFP_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
 #        function(x) WFP_survival_ASR_bootstrap_result[[x]])
-# WFP_ASR_boot <- data.frame(ASR_boot_out = unname(WFP_ASR_boot), iter = 1:niter, population = "WFP")
+# WFP_ASR_boot <- data.frame(ASR_boot_out = unname(WFP_ASR_boot), iter = 1:niter, 
+#                            population = "WFP")
 # 
 # # Tuzla Kentish plover
 # KPT_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
 #        function(x) KPT_survival_ASR_bootstrap_result[[x]])
-# KPT_ASR_boot <- data.frame(ASR_boot_out = unname(KPT_ASR_boot), iter = 1:niter, population = "KPT")
+# KPT_ASR_boot <- data.frame(ASR_boot_out = unname(KPT_ASR_boot), iter = 1:niter, 
+#                            population = "KPT")
 # 
 # # Maio Kentish plover
 # KPM_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
 #        function(x) KPM_survival_ASR_bootstrap_result[[x]])
-# KPM_ASR_boot <- data.frame(ASR_boot_out = unname(KPM_ASR_boot), iter = 1:niter, population = "KPM")
+# KPM_ASR_boot <- data.frame(ASR_boot_out = unname(KPM_ASR_boot), iter = 1:niter, 
+#                            population = "KPM")
 # 
 # # snowy plover
 # SP_ASR_boot <-
 # sapply(seq(from = 3, to = niter * 3, by = 3),
 #        function(x) SP_survival_ASR_bootstrap_result[[x]])
-# SP_ASR_boot <- data.frame(ASR_boot_out = unname(SP_ASR_boot), iter = 1:niter, population = "SP")
+# SP_ASR_boot <- data.frame(ASR_boot_out = unname(SP_ASR_boot), iter = 1:niter, 
+#                           population = "SP")
 # 
 # ASR_boot_out <- rbind(SP_ASR_boot,
 #                       KIP_ASR_boot,
@@ -1249,10 +1250,11 @@ AIC_table_juvenile_adult_boot_out <-
   read.table("output/AIC_table_juvenile_adult_boot_out.txt", header = TRUE)
 
 survival_rates_boot_out <-
-  read.table("output/survival_rates_boot_out.txt", header = TRUE)
+  read.table("output/surv_boot_out_final.txt", header = TRUE)
 
 ASR_boot_out <-
-  read.table("output/ASR_boot_out.txt", header = TRUE)
+  read.table("output/ASR_boot_out_final.txt", header = TRUE)
+
 ```
 ***
 ### Visualizations of bootstrap results
@@ -1274,11 +1276,15 @@ sex_diff_survival <- function(survival_rates_boot_out, pop_name) {
   # female and male survival rates for each stage.
   for(i in 1:niter){
     Adult <- 
-      survival_rates_boot2[which(survival_rates_boot2$iter == i), 2][2] -
-      survival_rates_boot2[which(survival_rates_boot2$iter == i), 2][1]
+      survival_rates_boot2[which(survival_rates_boot2$iter == i & 
+                                   survival_rates_boot2$sex_age == "Male_Adult"), 2] -
+      survival_rates_boot2[which(survival_rates_boot2$iter == i & 
+                                   survival_rates_boot2$sex_age == "Female_Adult"), 2]
     Juvenile <- 
-      survival_rates_boot2[which(survival_rates_boot2$iter == i), 2][4] -
-      survival_rates_boot2[which(survival_rates_boot2$iter == i), 2][3]
+      survival_rates_boot2[which(survival_rates_boot2$iter == i & 
+                                   survival_rates_boot2$sex_age == "Male_Juvenile"), 2] -
+      survival_rates_boot2[which(survival_rates_boot2$iter == i & 
+                                   survival_rates_boot2$sex_age == "Female_Juvenile"), 2]
     
     sex_diff_surv_output[i, 1] <- Adult
     sex_diff_surv_output[i, 2] <- Juvenile
@@ -1295,12 +1301,18 @@ sex_diff_survival <- function(survival_rates_boot_out, pop_name) {
 ```
 run the function on the bootstrap list from above
 ```{r}
-KIP_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot_out, pop_name = "KIP")
-WFP_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot_out, pop_name = "WFP")
-MP_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot_out, pop_name = "MP")
-KPT_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot_out, pop_name = "KPT")
-KPM_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot_out, pop_name = "KPM")
-SP_sex_diff_survival_output <- sex_diff_survival(survival_rates_boot_out, pop_name = "SP")
+KIP_sex_diff_survival_output <- 
+  sex_diff_survival(survival_rates_boot_out, pop_name = "KIP")
+WFP_sex_diff_survival_output <- 
+  sex_diff_survival(survival_rates_boot_out, pop_name = "WFP")
+MP_sex_diff_survival_output <- 
+  sex_diff_survival(survival_rates_boot_out, pop_name = "MP")
+KPT_sex_diff_survival_output <- 
+  sex_diff_survival(survival_rates_boot_out, pop_name = "KPT")
+KPM_sex_diff_survival_output <- 
+  sex_diff_survival(survival_rates_boot_out, pop_name = "KPM")
+SP_sex_diff_survival_output <- 
+  sex_diff_survival(survival_rates_boot_out, pop_name = "SP")
 
 # stack the results into one dataframe and tidy column names
 All_pops_sex_diff <- rbind(KIP_sex_diff_survival_output,
@@ -1401,10 +1413,10 @@ Figure_1a_background <-
            label = c("male"), size = 4,
            vjust = c(1), hjust = c(0.5)) +
   facet_grid(. ~ Population, labeller = as_labeller(species_names)) +
-  theme(#text = element_text(family="Franklin Gothic Book", colour = "white"),
-        legend.position = "none",
+  theme(legend.position = "none",
         axis.title.x = element_text(size=10, vjust=0, colour = "white"),
-        axis.text.x  = element_text(size=9, angle = 45, hjust = 0.5, vjust = 0.5, colour = "white"),
+        axis.text.x  = element_text(size=9, angle = 45, hjust = 0.5, vjust = 0.5, 
+                                    colour = "white"),
         axis.title.y = element_text(size=10, hjust=0, vjust = 0, colour = "white"),
         axis.text.y  = element_text(size=9, colour = "white"),
         panel.grid.major = element_blank(),
@@ -1420,7 +1432,7 @@ Figure_1a_background <-
   scale_x_continuous(limits=c(0,4),breaks=c(0,1), labels=c("Juvenile", "Adult"),
                      expand = c(0, 0)) +
   scale_y_continuous(limits=c(-0.5,0.5), expand = c(0, 0)) +
-  xlab("Life-stage") +
+  xlab("Life stage") +
   ylab(expression(paste("             Sex-bias in\napparent survival (year" ^-1, ")", 
                         sep = "")))
 
@@ -1429,8 +1441,7 @@ Figure_1a <-
   theme_bw() +
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75), size = 0.15) +
   facet_grid(. ~ Population, labeller = as_labeller(population_names)) +
-  theme(#text = element_text(family="Franklin Gothic Book"),
-        legend.position = "none",
+  theme(legend.position = "none",
         panel.background = element_rect(fill = "transparent",colour = NA),
         plot.background = element_rect(fill = "transparent",colour = NA),
         axis.title.x = element_text(size=10, vjust=0),
@@ -1448,7 +1459,7 @@ Figure_1a <-
         strip.text = element_text(size=8)) +
   scale_fill_manual(values = cbPalette) +
   scale_y_continuous(limits=c(-0.5,0.5), expand = c(0, 0)) +
-  xlab("Life-stage") +
+  xlab("Life stage") +
   ylab(expression(paste("             Sex-bias in\napparent survival (year" ^-1, ")",
                         sep = "")))
 
@@ -1469,10 +1480,10 @@ CI <- 0.95
 ASR_boot_summary <- 
   ASR_boot_out %>%
   dplyr::group_by(population) %>%
-  dplyr::summarise(ucl = stats::quantile(ASR_boot_out, (1 - CI)/2, na.rm = TRUE),
-                   lcl = stats::quantile(ASR_boot_out, 1 - (1 - CI)/2, na.rm = TRUE),
-                   avg = mean(ASR_boot_out),
-                   med = median(ASR_boot_out))
+  dplyr::summarise(ucl_ASR = stats::quantile(ASR_boot_out, (1 - CI)/2, na.rm = TRUE),
+                   lcl_ASR = stats::quantile(ASR_boot_out, 1 - (1 - CI)/2, na.rm = TRUE),
+                   avg_ASR = mean(ASR_boot_out),
+                   med_ASR = median(ASR_boot_out))
 
 # define the factor levels of the population variable so that the populations
 # are in an order that reflects the ASR (male biased to female biased)
@@ -1490,24 +1501,25 @@ Figure 1b: We visualized the bootstrapped results of adult sex ratio with a hist
 ```{r, fig.height=3, fig.width=6, fig.align="center"}
 Figure_1b <- 
   ggplot() +
-  annotate("rect", xmin=0.15, xmax=0.5, ymin=0, ymax=160, alpha=0.6,
+  annotate("rect", xmin=0, xmax=0.5, ymin=0, ymax=160, alpha=0.6,
            fill= brewer.pal(8, "Dark2")[c(2)]) +
-  annotate("rect", xmin=0.5, xmax=0.85, ymin=0, ymax=160, alpha=0.6,
+  annotate("rect", xmin=0.5, xmax=1, ymin=0, ymax=160, alpha=0.6,
            fill= brewer.pal(8, "Dark2")[c(1)]) +
-  annotate("text", x = c(0.2), y = c(80),
+  annotate("text", x = c(0.025), y = c(80),
            label = c("female"), size = 4,
            vjust = c(0), hjust = c(0.5)) +
-  annotate("text", x = c(0.8), y = c(80),
+  annotate("text", x = c(0.975), y = c(80),
            label = c("male"), size = 4,
            vjust = c(1), hjust = c(0.5)) +
-  geom_histogram(binwidth = 0.01, data = ASR_boot_out, aes(x = ASR_boot_out), fill = "grey30") +
-  geom_errorbarh(data = ASR_boot_summary, aes(y = 150, x = lcl, xmin = lcl, xmax = ucl), 
+  geom_histogram(binwidth = 0.015, data = ASR_boot_out, 
+                 aes(x = ASR_boot_out), fill = "grey30") +
+  geom_errorbarh(data = ASR_boot_summary, 
+                 aes(y = 150, x = lcl_ASR, xmin = lcl_ASR, xmax = ucl_ASR), 
                  color = "black", size = 0.5, linetype = "solid") +
   coord_flip() +
   facet_grid(. ~ population) +
   theme_bw() +
-  theme(#text = element_text(family="Franklin Gothic Book"),
-        legend.position = "none",
+  theme(legend.position = "none",
         panel.background = element_rect(fill = "transparent",colour = NA),
         plot.background = element_rect(fill = "transparent",colour = NA),
         axis.title.x = element_text(size=10, vjust=-0.1),
@@ -1526,19 +1538,20 @@ Figure_1b <-
         strip.text = element_blank()) +
   ylab("Bootstrap frequency") +
   xlab("Adult sex ratio\n(proportion male)") +
-  scale_x_continuous(limits = c(0.15, 0.85), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
   scale_y_continuous(limits = c(0, 160), expand = c(0, 0), breaks=c(0, 80, 150))
 Figure_1b
 ```
 
 **AIC model selection summary (panels in Supplementary Material Figure S5)**
 
-To illustrate the mark-recapture model selection going on during the bootstrap, we summarized AIC statistics for each model included in the survival analysis and visualized with ranked boxplots (Figure S4)
+To illustrate the mark-recapture model selection going on during the bootstrap, we summarized AIC statistics for each model included in the survival analysis and visualized with ranked boxplots (Figure S5)
 
 First, wrangle the bootstrap AIC table output
 ```{r}
 # define the model number
-AIC_table_juvenile_adult_boot_out$model_number <- as.numeric(AIC_table_juvenile_adult_boot_out$model)
+AIC_table_juvenile_adult_boot_out$model_number <- 
+  as.numeric(AIC_table_juvenile_adult_boot_out$model)
 
 # summarize the average AIC stats for each candidate model across all 1000 iterations
 juv_ad_AIC_tables_summary <- 
@@ -1550,12 +1563,14 @@ juv_ad_AIC_tables_summary <-
                    IQR_Weight = IQR(weight))
 
 # rank the output by delta AIC and determine model number
-juv_ad_AIC_tables_summary <- dplyr::arrange(juv_ad_AIC_tables_summary, population, avg_Delta)
+juv_ad_AIC_tables_summary <- 
+  dplyr::arrange(juv_ad_AIC_tables_summary, population, avg_Delta)
 juv_ad_AIC_tables_summary$model_number <- as.numeric(juv_ad_AIC_tables_summary$model)
 
 # merge the two datasets for plotting
 AIC_table_juvenile_adult_boot_out <- 
-  dplyr::left_join(juv_ad_AIC_tables_summary, AIC_table_juvenile_adult_boot_out, by = c("population", "model_number"))
+  dplyr::left_join(juv_ad_AIC_tables_summary, AIC_table_juvenile_adult_boot_out, 
+                   by = c("population", "model_number"))
 
 AIC_table_juvenile_adult_boot_out$p <- 
   str_replace(AIC_table_juvenile_adult_boot_out$p, pattern = "time", replacement = "year")
@@ -1564,16 +1579,19 @@ juv_ad_AIC_tables_summary$model <-
   str_replace(juv_ad_AIC_tables_summary$model, pattern = "time", replacement = "year")
 
 AIC_table_juvenile_adult_boot_out$p <- 
-  str_replace(AIC_table_juvenile_adult_boot_out$p, pattern = "Quadratic", replacement = "Time^2")
+  str_replace(AIC_table_juvenile_adult_boot_out$p, pattern = "Quadratic", 
+              replacement = "Time^2")
 
 juv_ad_AIC_tables_summary$model <- 
-  str_replace(juv_ad_AIC_tables_summary$model, pattern = "Quadratic", replacement = "Time^2")
+  str_replace(juv_ad_AIC_tables_summary$model, pattern = "Quadratic", 
+              replacement = "Time^2")
 
 # extract the model structure explaining resighting probability
 AIC_table_juvenile_adult_boot_out$p <- 
   factor(AIC_table_juvenile_adult_boot_out$p,
          levels = c(str_sub(as.character(juv_ad_AIC_tables_summary$model), 
-                            start = 18, end = str_length(juv_ad_AIC_tables_summary$model)-1)[1:26]))
+                            start = 18, 
+                            end = str_length(juv_ad_AIC_tables_summary$model)-1)[1:26]))
 
 AIC_table_juvenile_adult_boot_out$population <- 
   factor(AIC_table_juvenile_adult_boot_out$population,
@@ -1589,9 +1607,10 @@ roles <- function(x) sub("[^_]*_","",x )
 
 plot the overall model ranks of the juvenile and adult survival anlaysis based on Delta AIC. We specified that the model axis is ranked according to their AIC statistics.
 ```{r}
-Figure_S4_Delta_AIC <- 
+Figure_S5_Delta_AIC <- 
   ggplot(cbind(as.data.frame(AIC_table_juvenile_adult_boot_out), 
-               V4=paste(AIC_table_juvenile_adult_boot_out$population,AIC_table_juvenile_adult_boot_out$p,sep="_")), 
+               V4=paste(AIC_table_juvenile_adult_boot_out$population,
+                        AIC_table_juvenile_adult_boot_out$p, sep="_")), 
          aes(x=reorder(V4,DeltaAICc), y=DeltaAICc) ) + 
   theme_bw() +
   geom_boxplot(width = 0.6, fill = "grey70", outlier.size = 0.000, size = 0.2) +
@@ -1618,9 +1637,10 @@ Figure_S4_Delta_AIC <-
 ```
 plot the overall model ranks of the juvenile and adult survival anlaysis based on AIC weight. We specified that the model axis is ranked according to their AIC statistics.
 ```{r, fig.height=6, fig.width=11, fig.align="center",out.extra='angle=270'}
-Figure_S4_AIC_weight <- 
+Figure_S5_AIC_weight <- 
   ggplot(cbind(as.data.frame(AIC_table_juvenile_adult_boot_out), 
-               V4=paste(AIC_table_juvenile_adult_boot_out$population,AIC_table_juvenile_adult_boot_out$p,sep="_")),
+               V4=paste(AIC_table_juvenile_adult_boot_out$population,
+                        AIC_table_juvenile_adult_boot_out$p, sep="_")),
          aes(x=reorder(V4,DeltaAICc), y=weight) ) + 
   theme_bw() +
   geom_boxplot(width = 0.6, fill = "grey70", outlier.size = 0.000, size = 0.2) +
@@ -1649,8 +1669,8 @@ Figure_S4_AIC_weight <-
 grid.newpage()
 pushViewport(viewport(layout = grid.layout(4, 1)))
 vplayout <- function(x, y) viewport(layout.pos.row = x, layout.pos.col = y)
-print(Figure_S4_Delta_AIC, vp = vplayout(1:2, 1))
-print(Figure_S4_AIC_weight, vp = vplayout(3:4, 1))
+print(Figure_S5_Delta_AIC, vp = vplayout(1:2, 1))
+print(Figure_S5_AIC_weight, vp = vplayout(3:4, 1))
 ```
 
 ***
@@ -1675,7 +1695,7 @@ sensitivity_analysis <-
     # number of stages in the matrix
     no_stages <- sqrt(length(matrix_str))
 
-    # Define plover life-stages of the Ceuta snowy plover matrix model
+    # Define plover life stages of the Ceuta snowy plover matrix model
     stages <- c("F_1st_yr",  "F_Adt",  "M_1st_yr",  "M_Adt")
 
     # an empty t by x matrix
@@ -1696,7 +1716,7 @@ sensitivity_analysis <-
     n <- length(vr)
 
     # create vectors of perturbations to test on parameters of the matrix model
-    vr_nums <- seq(0, 1, 0.01) # proportional changes in survival and HSR (i.e., between 0 an 1)
+    vr_nums <- seq(0, 1, 0.01) # prop changes in survival and HSR (i.e., between 0 and 1)
     h_nums <- seq(0, 2, 0.02) # proportional changes in h index (i.e., between 0 and 2)
     k_nums <- seq(2, 4, 0.02) # proportional changes in k (i.e, between 2 and 4)
 
@@ -1798,7 +1818,8 @@ sensitivity_analysis <-
       # define stable stage as the last stage
       stable.stage <- stage[, niter]
       # calc ASR as the proportion of the adult stable stage class that is male
-      h_pert_ASR[i,] <- stable.stage[no_stages]/(stable.stage[no_stages/2] + stable.stage[no_stages])
+      h_pert_ASR[i,] <- 
+        stable.stage[no_stages]/(stable.stage[no_stages/2] + stable.stage[no_stages])
     }
     # get the spline function of ASR
     spl_ASR <- smooth.spline(h_pert_ASR[, 1] ~ rownames(h_pert_ASR))
@@ -1907,7 +1928,7 @@ sensitivity_analysis <-
 **LTRE_analysis()** estimates the contribution that each vital rate has on ASR bias, given the sensitivities calculated in the previous function (see formula 8 on page 133 of Veran and Beissinger (2009))
 ```{r}
 LTRE_analysis <-
-  function(Mprime_sens, matrix_str, vital_rates, pop_name){
+  function(Mprime_sens, matrix_str, vital_rates, pop_name, sex){
     
     # make empty dataframes to stroe LTRE results for ASR
     LTRE_ASR <-
@@ -1917,16 +1938,30 @@ LTRE_analysis <-
                  contribution = numeric(4))
 
     # run a for loop to extract the parameter contributions
-    for(i in 1:nrow(LTRE_ASR))
-    {
-      LTRE_ASR[i, 2] <-
-        ifelse(i < 3, (vital_rates[[i + 2]] - vital_rates[[i]]) * 
-                 Mprime_sens$ASR_pert_results$sensitivities[i + 2],
-               ifelse(i == 3, ((1-vital_rates[[7]]) - vital_rates[[7]]) * 
-                        Mprime_sens$ASR_pert_results$sensitivities[7],
-                      (1 - vital_rates[[5]]) * Mprime_sens$ASR_pert_results$sensitivities[5]))
-    }
-
+    if (sex == "male")
+      for(i in 1:nrow(LTRE_ASR))
+      {
+        LTRE_ASR[i, 2] <-
+          ifelse(i < 3, (vital_rates[[i]] - vital_rates[[i + 2]]) *
+                   Mprime_sens$ASR_pert_results$sensitivities[i],
+                 ifelse(i == 3, (vital_rates[[7]] - (1-vital_rates[[7]])) *
+                          Mprime_sens$ASR_pert_results$sensitivities[7],
+                        (vital_rates[[5]] - 1) * 
+                          Mprime_sens$ASR_pert_results$sensitivities[5]))
+      }
+    
+    else
+      for(i in 1:nrow(LTRE_ASR))
+      {
+        LTRE_ASR[i, 2] <-
+          ifelse(i < 3, (vital_rates[[i + 2]] - vital_rates[[i]]) *
+                   Mprime_sens$ASR_pert_results$sensitivities[i + 2],
+                 ifelse(i == 3, (vital_rates[[7]] - (1-vital_rates[[7]])) *
+                          Mprime_sens$ASR_pert_results$sensitivities[7],
+                        (vital_rates[[5]] - 1) * 
+                          Mprime_sens$ASR_pert_results$sensitivities[5]))
+      }
+  
     LTRE_ASR$parameter <- factor(LTRE_ASR$parameter, levels = c("Adult survival",
                                                                 "Juvenile survival",
                                                                 "Hatching sex ratio",
@@ -1938,6 +1973,50 @@ LTRE_analysis <-
     LTRE_df 
   }
 ```
+function to check if LTRE contributions add up to the absolute difference between ASR of Matrix M and 0.5
+```{r}
+LTRE_contributions_check <- 
+  function(M_matrix_vital_rates, Mprime_sensitivities, M_matrix_ASR, scenario) {
+  if (scenario == "male")
+    contribution_sum <- 
+      sum(
+          (M_matrix_vital_rates[[1]] - M_matrix_vital_rates[[3]]) * 
+            Mprime_sensitivities[1],
+          (M_matrix_vital_rates[[2]] - M_matrix_vital_rates[[4]]) * 
+            Mprime_sensitivities[2],
+          (M_matrix_vital_rates[[3]] - M_matrix_vital_rates[[3]]) * 
+            Mprime_sensitivities[3],
+          (M_matrix_vital_rates[[4]] - M_matrix_vital_rates[[4]]) * 
+            Mprime_sensitivities[4],
+          (M_matrix_vital_rates[[7]] - (1 - M_matrix_vital_rates[[7]])) *
+            Mprime_sensitivities[7],
+          (M_matrix_vital_rates[[5]] - 1) * Mprime_sensitivities[5]
+        )
+  
+  else
+    contribution_sum <- 
+      sum(
+          (M_matrix_vital_rates[[3]] - M_matrix_vital_rates[[1]]) * 
+            Mprime_sensitivities[3],
+          (M_matrix_vital_rates[[4]] - M_matrix_vital_rates[[2]]) * 
+            Mprime_sensitivities[4],
+          (M_matrix_vital_rates[[1]] - M_matrix_vital_rates[[1]]) * 
+            Mprime_sensitivities[1],
+          (M_matrix_vital_rates[[2]] - M_matrix_vital_rates[[2]]) * 
+            Mprime_sensitivities[2],
+          (M_matrix_vital_rates[[7]] - (1 - M_matrix_vital_rates[[7]])) * 
+            Mprime_sensitivities[7],
+          (M_matrix_vital_rates[[5]] - 1) * Mprime_sensitivities[5]
+        )
+  ASR_bias <- abs(M_matrix_ASR - 0.5)
+  absolute_difference <- abs(ASR_bias) - abs(contribution_sum)
+  
+  return(list(contribution_sum = as.vector(contribution_sum), 
+              ASR_bias = as.vector(ASR_bias), 
+              absolute_difference = as.vector(absolute_difference)))
+}
+```
+
 define the iterations variable as a factor
 ```{r}
 survival_rates_boot_out$iter <- as.factor(survival_rates_boot_out$iter)
@@ -1947,11 +2026,11 @@ summarise the bootstrap stage- and sex-specific survival rates for the determini
 survival_rates_boot_summary <-
   Rmisc::summarySE(survival_rates_boot_out,
                    measurevar = "estimate",
-                   groupvars = c("population", "Sex_Age"),
+                   groupvars = c("population", "sex_age"),
                    conf.interval = 0.95)
 ```
 define deteriministic vital rates estimated from mark-recapture analysis. This are the "treatment" rates observed in the field:
-```{r}
+```{r, cache = TRUE}
 KIP_VR_treat <- 
   list(F_Juv_survl = dplyr::filter(survival_rates_boot_summary, 
                                    population == "KIP")[2,4],
@@ -2042,10 +2121,11 @@ SP_VR_treat <-
        # Define primary sex ratio
        HSR = HSR_SP)
 ```
-Define vital rates of the M prime matrix (i.e., average between a "control matrix" and the "treatment matrix"). The control matrix is a matrix in which the female vital rates are set to the male vital rates, and the treatment matrix is the matrix containing the sex-specific values estimated from the field (see formula 8 on page 133 of Veran and Beissinger (2009)). The M-prime matrix is the average matrix of the treatment and control matricies:
-```{r}
-
-KIP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
+Define vital rates of the M prime matrix (i.e., average between a "control matrix" and the "treatment matrix"). The control matrix is a matrix in which the female vital rates are set to the male vital rates, and the treatment matrix is the matrix containing the sex-specific values estimated from the field (see formula 8 on page 133 of Veran and Beissinger (2009)). The M-prime matrix is the average matrix of the treatment and control matricies. We also tested a scenario whereby the control matrix consisted of female-only rates (i.e., the male rates were set to the female rates).
+```{r, cache = TRUE}
+# Set to male rates
+KIP_VR_mprime_male <- 
+             list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                                                    population == "KIP")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "KIP")[4,4])/2,
@@ -2067,7 +2147,8 @@ KIP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                   # Define primary sex ratio
                   HSR = (HSR_KIP+0.5)/2)
 
-KPT_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+KPT_VR_mprime_male <- 
+             list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
                                                    population == "KPT")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "KPT")[4,4])/2,
@@ -2089,7 +2170,8 @@ KPT_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                   # Define primary sex ratio
                   HSR = (HSR_KPT+0.5)/2)
 
-KPM_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+KPM_VR_mprime_male <- 
+             list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
                                                    population == "KPM")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "KPM")[4,4])/2,
@@ -2111,7 +2193,8 @@ KPM_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                   # Define primary sex ratio
                   HSR = (HSR_KPM+0.5)/2)
 
-MP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
+MP_VR_mprime_male <- 
+             list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                                                   population == "MP")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "MP")[4,4])/2,
@@ -2133,7 +2216,8 @@ MP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                   # Define primary sex ratio
                   HSR = (HSR_MP+0.5)/2)
 
-WFP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+WFP_VR_mprime_male <- 
+             list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
                                                    population == "WFP")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "WFP")[4,4])/2,
@@ -2155,7 +2239,8 @@ WFP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                   # Define primary sex ratio
                   HSR = (HSR_WFP+0.5)/2)
 
-SP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+SP_VR_mprime_male <- 
+             list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
                                                   population == "SP")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "SP")[4,4])/2,
@@ -2177,8 +2262,9 @@ SP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                   # Define primary sex ratio
                   HSR = (HSR_SP+0.5)/2)
 
-# Set to female rates (in response to reviewer)
-KIP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
+# Set to female rates
+KIP_VR_mprime_female <- 
+             list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                                                    population == "KIP")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "KIP")[2,4])/2,
@@ -2200,7 +2286,8 @@ KIP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                   # Define primary sex ratio
                   HSR = (HSR_KIP+0.5)/2)
 
-KPT_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+KPT_VR_mprime_female <- 
+             list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
                                                    population == "KPT")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "KPT")[2,4])/2,
@@ -2222,7 +2309,8 @@ KPT_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                   # Define primary sex ratio
                   HSR = (HSR_KPT+0.5)/2)
 
-KPM_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+KPM_VR_mprime_female <- 
+             list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
                                                    population == "KPM")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "KPM")[2,4])/2,
@@ -2244,7 +2332,8 @@ KPM_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                   # Define primary sex ratio
                   HSR = (HSR_KPM+0.5)/2)
 
-MP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
+MP_VR_mprime_female <- 
+             list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                                                   population == "MP")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "MP")[2,4])/2,
@@ -2266,7 +2355,8 @@ MP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                   # Define primary sex ratio
                   HSR = (HSR_MP+0.5)/2)
 
-WFP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+WFP_VR_mprime_female <- 
+             list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
                                                    population == "WFP")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "WFP")[2,4])/2,
@@ -2288,7 +2378,8 @@ WFP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary,
                   # Define primary sex ratio
                   HSR = (HSR_WFP+0.5)/2)
 
-SP_VR_mprime <- list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
+SP_VR_mprime_female <- 
+             list(F_Juv_survl = (dplyr::filter(survival_rates_boot_summary, 
                                                   population == "SP")[2,4] +
                                    dplyr::filter(survival_rates_boot_summary, 
                                                  population == "SP")[2,4])/2,
@@ -2338,89 +2429,138 @@ SP_treatment_matrix <- plover_matrix(SP_VR_treat)
 ```
 build the M-prime matrix
 ```{r}
-KIP_M_prime_matrix <- plover_matrix(KIP_VR_mprime)
-KPT_M_prime_matrix <- plover_matrix(KPT_VR_mprime)
-KPM_M_prime_matrix <- plover_matrix(KPM_VR_mprime)
-MP_M_prime_matrix <- plover_matrix(MP_VR_mprime)
-WFP_M_prime_matrix <- plover_matrix(WFP_VR_mprime)
-SP_M_prime_matrix <- plover_matrix(SP_VR_mprime)
+KIP_M_prime_matrix_male <- plover_matrix(KIP_VR_mprime_male)
+KPT_M_prime_matrix_male <- plover_matrix(KPT_VR_mprime_male)
+KPM_M_prime_matrix_male <- plover_matrix(KPM_VR_mprime_male)
+MP_M_prime_matrix_male <- plover_matrix(MP_VR_mprime_male)
+WFP_M_prime_matrix_male <- plover_matrix(WFP_VR_mprime_male)
+SP_M_prime_matrix_male <- plover_matrix(SP_VR_mprime_male)
+
+KIP_M_prime_matrix_female <- plover_matrix(KIP_VR_mprime_female)
+KPT_M_prime_matrix_female <- plover_matrix(KPT_VR_mprime_female)
+KPM_M_prime_matrix_female <- plover_matrix(KPM_VR_mprime_female)
+MP_M_prime_matrix_female <- plover_matrix(MP_VR_mprime_female)
+WFP_M_prime_matrix_female <- plover_matrix(WFP_VR_mprime_female)
+SP_M_prime_matrix_female <- plover_matrix(SP_VR_mprime_female)
 ```
 determine the ASR at the stable stage distribution
-```{r}
+```{r, cache = TRUE}
+# Kittlitz's plover
 KIP_treatment_ASR_analysis <- 
   matrix_ASR(M = KIP_treatment_matrix, h = KIP_VR_treat$h, HSR = KIP_VR_treat$HSR, 
              iterations = 1000)
 KIP_ASR_treat <- KIP_treatment_ASR_analysis$ASR
 KIP_ASR_treat
 
-KIP_M_prime_ASR_analysis <- 
-  matrix_ASR(M = KIP_M_prime_matrix, h = 1, HSR = KIP_VR_mprime$HSR, 
+KIP_M_prime_ASR_analysis_female <- 
+  matrix_ASR(M = KIP_M_prime_matrix_female, h = 1, HSR = KIP_VR_mprime_female$HSR, 
              iterations = 1000)
-KIP_ASR_mprime <- KIP_M_prime_ASR_analysis$ASR
-KIP_ASR_mprime
+KIP_ASR_mprime_female <- KIP_M_prime_ASR_analysis_female$ASR
+KIP_ASR_mprime_female
 
+KIP_M_prime_ASR_analysis_male <- 
+  matrix_ASR(M = KIP_M_prime_matrix_male, h = 1, HSR = KIP_VR_mprime_male$HSR, 
+             iterations = 1000)
+KIP_ASR_mprime_male <- KIP_M_prime_ASR_analysis_male$ASR
+KIP_ASR_mprime_male
+
+# Kentish plover (Turkey)
 KPT_treatment_ASR_analysis <- 
   matrix_ASR(M = KPT_treatment_matrix, h = KPT_VR_treat$h, HSR = KPT_VR_treat$HSR, 
              iterations = 1000)
 KPT_ASR_treat <- KPT_treatment_ASR_analysis$ASR
 KPT_ASR_treat
 
-KPT_M_prime_ASR_analysis <- 
-  matrix_ASR(M = KPT_M_prime_matrix, h = 1, HSR = KPT_VR_mprime$HSR, 
+KPT_M_prime_ASR_analysis_female <- 
+  matrix_ASR(M = KPT_M_prime_matrix_female, h = 1, HSR = KPT_VR_mprime_female$HSR, 
              iterations = 1000)
-KPT_ASR_mprime <- KPT_M_prime_ASR_analysis$ASR
-KPT_ASR_mprime
+KPT_ASR_mprime_female <- KPT_M_prime_ASR_analysis_female$ASR
+KPT_ASR_mprime_female
 
+KPT_M_prime_ASR_analysis_male <- 
+  matrix_ASR(M = KPT_M_prime_matrix_male, h = 1, HSR = KPT_VR_mprime_male$HSR, 
+             iterations = 1000)
+KPT_ASR_mprime_male <- KPT_M_prime_ASR_analysis_male$ASR
+KPT_ASR_mprime_male
+
+# Kentish plover (Maio)
 KPM_treatment_ASR_analysis <- 
   matrix_ASR(M = KPM_treatment_matrix, h = KPM_VR_treat$h, HSR = KPM_VR_treat$HSR, 
              iterations = 1000)
 KPM_ASR_treat <- KPM_treatment_ASR_analysis$ASR
 KPM_ASR_treat
 
-KPM_M_prime_ASR_analysis <- 
-  matrix_ASR(M = KPM_M_prime_matrix, h = 1, HSR = KPM_VR_mprime$HSR, 
+KPM_M_prime_ASR_analysis_female <- 
+  matrix_ASR(M = KPM_M_prime_matrix_female, h = 1, HSR = KPM_VR_mprime_female$HSR, 
              iterations = 1000)
-KPM_ASR_mprime <- KPM_M_prime_ASR_analysis$ASR
-KPM_ASR_mprime
+KPM_ASR_mprime_female <- KPM_M_prime_ASR_analysis_female$ASR
+KPM_ASR_mprime_female
 
+KPM_M_prime_ASR_analysis_male <- 
+  matrix_ASR(M = KPM_M_prime_matrix_male, h = 1, HSR = KPM_VR_mprime_male$HSR, 
+             iterations = 1000)
+KPM_ASR_mprime_male <- KPM_M_prime_ASR_analysis_male$ASR
+KPM_ASR_mprime_male
+
+# Madagascar plover
 MP_treatment_ASR_analysis <- 
   matrix_ASR(M = MP_treatment_matrix, h = MP_VR_treat$h, HSR = MP_VR_treat$HSR, 
              iterations = 1000)
 MP_ASR_treat <- MP_treatment_ASR_analysis$ASR
 MP_ASR_treat
 
-MP_M_prime_ASR_analysis <- 
-  matrix_ASR(M = MP_M_prime_matrix, h = 1, HSR = MP_VR_mprime$HSR, 
+MP_M_prime_ASR_analysis_female <- 
+  matrix_ASR(M = MP_M_prime_matrix_female, h = 1, HSR = MP_VR_mprime_female$HSR, 
              iterations = 1000)
-MP_ASR_mprime <- MP_M_prime_ASR_analysis$ASR
-MP_ASR_mprime
+MP_ASR_mprime_female <- MP_M_prime_ASR_analysis_female$ASR
+MP_ASR_mprime_female
 
+MP_M_prime_ASR_analysis_male <- 
+  matrix_ASR(M = MP_M_prime_matrix_male, h = 1, HSR = MP_VR_mprime_male$HSR, 
+             iterations = 1000)
+MP_ASR_mprime_male <- MP_M_prime_ASR_analysis_male$ASR
+MP_ASR_mprime_male
+
+# White-fronted plover
 WFP_treatment_ASR_analysis <- 
   matrix_ASR(M = WFP_treatment_matrix, h = WFP_VR_treat$h, HSR = WFP_VR_treat$HSR, 
              iterations = 1000)
 WFP_ASR_treat <- WFP_treatment_ASR_analysis$ASR
 WFP_ASR_treat
 
-WFP_M_prime_ASR_analysis <- 
-  matrix_ASR(M = WFP_M_prime_matrix, h = 1, HSR = WFP_VR_mprime$HSR, 
+WFP_M_prime_ASR_analysis_female <- 
+  matrix_ASR(M = WFP_M_prime_matrix_female, h = 1, HSR = WFP_VR_mprime_female$HSR, 
              iterations = 1000)
-WFP_ASR_mprime <- WFP_M_prime_ASR_analysis$ASR
-WFP_ASR_mprime
+WFP_ASR_mprime_female <- WFP_M_prime_ASR_analysis_female$ASR
+WFP_ASR_mprime_female
 
+WFP_M_prime_ASR_analysis_male <- 
+  matrix_ASR(M = WFP_M_prime_matrix_male, h = 1, HSR = WFP_VR_mprime_male$HSR, 
+             iterations = 1000)
+WFP_ASR_mprime_male <- WFP_M_prime_ASR_analysis_male$ASR
+WFP_ASR_mprime_male
+
+# Snowy Plover
 SP_treatment_ASR_analysis <- 
   matrix_ASR(M = SP_treatment_matrix, h = SP_VR_treat$h, HSR = SP_VR_treat$HSR, 
              iterations = 1000)
 SP_ASR_treat <- SP_treatment_ASR_analysis$ASR
 SP_ASR_treat
 
-SP_M_prime_ASR_analysis <- 
-  matrix_ASR(M = SP_M_prime_matrix, h = 1, HSR = SP_VR_mprime$HSR,
+SP_M_prime_ASR_analysis_female <- 
+  matrix_ASR(M = SP_M_prime_matrix_female, h = 1, HSR = SP_VR_mprime_female$HSR, 
              iterations = 1000)
-SP_ASR_mprime <- SP_M_prime_ASR_analysis$ASR
-SP_ASR_mprime
+SP_ASR_mprime_female <- SP_M_prime_ASR_analysis_female$ASR
+SP_ASR_mprime_female
+
+SP_M_prime_ASR_analysis_male <- 
+  matrix_ASR(M = SP_M_prime_matrix_male, h = 1, HSR = SP_VR_mprime_male$HSR, 
+             iterations = 1000)
+SP_ASR_mprime_male <- SP_M_prime_ASR_analysis_male$ASR
+SP_ASR_mprime_male
 ```
 conduct a sensitivity analysis on the treatment matrix
-```{r}
+```{r, cache = TRUE}
 KIP_treat_sensitivity_analysis <- 
   sensitivity_analysis(vital_rates = KIP_VR_treat, 
                        matrix_str = matrix_structure, 
@@ -2476,122 +2616,304 @@ SP_treat_sensitivity_analysis <-
                        ASR = SP_ASR_treat)
 ```
 conduct a sensitivity analysis on the M-Prime matrix
-```{r}
-KIP_Mprime_sensitivity_analysis <- 
-  sensitivity_analysis(vital_rates = KIP_VR_mprime, 
+```{r, cache = TRUE}
+KIP_Mprime_sensitivity_analysis_male <- 
+  sensitivity_analysis(vital_rates = KIP_VR_mprime_male, 
                        matrix_str = matrix_structure, 
-                       h = KIP_VR_mprime$h, 
-                       k = KIP_VR_mprime$k, 
-                       HSR = KIP_VR_mprime$HSR, 
+                       h = KIP_VR_mprime_male$h, 
+                       k = KIP_VR_mprime_male$k, 
+                       HSR = KIP_VR_mprime_male$HSR, 
                        niter = 1000, 
-                       ASR = KIP_ASR_mprime)
+                       ASR = KIP_ASR_mprime_male)
+KIP_Mprime_sensitivity_analysis_female <- 
+  sensitivity_analysis(vital_rates = KIP_VR_mprime_female, 
+                       matrix_str = matrix_structure, 
+                       h = KIP_VR_mprime_female$h, 
+                       k = KIP_VR_mprime_female$k, 
+                       HSR = KIP_VR_mprime_female$HSR, 
+                       niter = 1000, 
+                       ASR = KIP_ASR_mprime_female)
 
-KPT_Mprime_sensitivity_analysis <- 
-  sensitivity_analysis(vital_rates = KPT_VR_mprime, 
+KPT_Mprime_sensitivity_analysis_male <- 
+  sensitivity_analysis(vital_rates = KPT_VR_mprime_male, 
                        matrix_str = matrix_structure, 
-                       h = KPT_VR_mprime$h, 
-                       k = KPT_VR_mprime$k, 
-                       HSR = KPT_VR_mprime$HSR, 
+                       h = KPT_VR_mprime_male$h, 
+                       k = KPT_VR_mprime_male$k, 
+                       HSR = KPT_VR_mprime_male$HSR, 
                        niter = 1000, 
-                       ASR = KPT_ASR_mprime)
+                       ASR = KPT_ASR_mprime_male)
+KPT_Mprime_sensitivity_analysis_female <- 
+  sensitivity_analysis(vital_rates = KPT_VR_mprime_female, 
+                       matrix_str = matrix_structure, 
+                       h = KPT_VR_mprime_female$h, 
+                       k = KPT_VR_mprime_female$k, 
+                       HSR = KPT_VR_mprime_female$HSR, 
+                       niter = 1000, 
+                       ASR = KPT_ASR_mprime_female)
 
-KPM_Mprime_sensitivity_analysis <- 
-  sensitivity_analysis(vital_rates = KPM_VR_mprime, 
+KPM_Mprime_sensitivity_analysis_male <- 
+  sensitivity_analysis(vital_rates = KPM_VR_mprime_male, 
                        matrix_str = matrix_structure, 
-                       h = KPM_VR_mprime$h, 
-                       k = KPM_VR_mprime$k, 
-                       HSR = KPM_VR_mprime$HSR, 
+                       h = KPM_VR_mprime_male$h, 
+                       k = KPM_VR_mprime_male$k, 
+                       HSR = KPM_VR_mprime_male$HSR, 
                        niter = 1000, 
-                       ASR = KPM_ASR_mprime)
+                       ASR = KPM_ASR_mprime_male)
+KPM_Mprime_sensitivity_analysis_female <- 
+  sensitivity_analysis(vital_rates = KPM_VR_mprime_female, 
+                       matrix_str = matrix_structure, 
+                       h = KPM_VR_mprime_female$h, 
+                       k = KPM_VR_mprime_female$k, 
+                       HSR = KPM_VR_mprime_female$HSR, 
+                       niter = 1000, 
+                       ASR = KPM_ASR_mprime_female)
 
-MP_Mprime_sensitivity_analysis <- 
-  sensitivity_analysis(vital_rates = MP_VR_mprime, 
+MP_Mprime_sensitivity_analysis_male <- 
+  sensitivity_analysis(vital_rates = MP_VR_mprime_male, 
                        matrix_str = matrix_structure, 
-                       h = MP_VR_mprime$h, 
-                       k = MP_VR_mprime$k, 
-                       HSR = MP_VR_mprime$HSR, 
+                       h = MP_VR_mprime_male$h, 
+                       k = MP_VR_mprime_male$k, 
+                       HSR = MP_VR_mprime_male$HSR, 
                        niter = 1000, 
-                       ASR = MP_ASR_mprime)
+                       ASR = MP_ASR_mprime_male)
+MP_Mprime_sensitivity_analysis_female <- 
+  sensitivity_analysis(vital_rates = MP_VR_mprime_female, 
+                       matrix_str = matrix_structure, 
+                       h = MP_VR_mprime_female$h, 
+                       k = MP_VR_mprime_female$k, 
+                       HSR = MP_VR_mprime_female$HSR, 
+                       niter = 1000, 
+                       ASR = MP_ASR_mprime_female)
 
-WFP_Mprime_sensitivity_analysis <- 
-  sensitivity_analysis(vital_rates = WFP_VR_mprime, 
+WFP_Mprime_sensitivity_analysis_male <- 
+  sensitivity_analysis(vital_rates = WFP_VR_mprime_male, 
                        matrix_str = matrix_structure, 
-                       h = WFP_VR_mprime$h, 
-                       k = WFP_VR_mprime$k, 
-                       HSR = WFP_VR_mprime$HSR, 
+                       h = WFP_VR_mprime_male$h, 
+                       k = WFP_VR_mprime_male$k, 
+                       HSR = WFP_VR_mprime_male$HSR, 
                        niter = 1000, 
-                       ASR = WFP_ASR_mprime)
+                       ASR = WFP_ASR_mprime_male)
+WFP_Mprime_sensitivity_analysis_female <- 
+  sensitivity_analysis(vital_rates = WFP_VR_mprime_female, 
+                       matrix_str = matrix_structure, 
+                       h = WFP_VR_mprime_female$h, 
+                       k = WFP_VR_mprime_female$k, 
+                       HSR = WFP_VR_mprime_female$HSR, 
+                       niter = 1000, 
+                       ASR = WFP_ASR_mprime_female)
 
-SP_Mprime_sensitivity_analysis <- 
-  sensitivity_analysis(vital_rates = SP_VR_mprime, 
+SP_Mprime_sensitivity_analysis_male <- 
+  sensitivity_analysis(vital_rates = SP_VR_mprime_male, 
                        matrix_str = matrix_structure, 
-                       h = SP_VR_mprime$h, 
-                       k = SP_VR_mprime$k, 
-                       HSR = SP_VR_mprime$HSR, 
+                       h = SP_VR_mprime_male$h, 
+                       k = SP_VR_mprime_male$k, 
+                       HSR = SP_VR_mprime_male$HSR, 
                        niter = 1000, 
-                       ASR = SP_ASR_mprime)
+                       ASR = SP_ASR_mprime_male)
+SP_Mprime_sensitivity_analysis_female <- 
+  sensitivity_analysis(vital_rates = SP_VR_mprime_female, 
+                       matrix_str = matrix_structure, 
+                       h = SP_VR_mprime_female$h, 
+                       k = SP_VR_mprime_female$k, 
+                       HSR = SP_VR_mprime_female$HSR, 
+                       niter = 1000, 
+                       ASR = SP_ASR_mprime_female)
 ```
 conduct the LTRE comparing the two matrices
-```{r}
-KIP_LTRE_plover <- 
-  LTRE_analysis(Mprime_sens = KIP_Mprime_sensitivity_analysis, 
+```{r, cache = TRUE}
+KIP_LTRE_plover_male <- 
+  LTRE_analysis(Mprime_sens = KIP_Mprime_sensitivity_analysis_male, 
                 matrix_str = matrix_str, 
                 vital_rates = KIP_VR_treat,
-                pop_name = "KIP")
+                pop_name = "KIP", sex = "male")
+KIP_LTRE_plover_female <- 
+  LTRE_analysis(Mprime_sens = KIP_Mprime_sensitivity_analysis_female, 
+                matrix_str = matrix_str, 
+                vital_rates = KIP_VR_treat,
+                pop_name = "KIP", sex = "female")
 
-KPT_LTRE_plover <- 
-  LTRE_analysis(Mprime_sens = KPT_Mprime_sensitivity_analysis, 
+KPT_LTRE_plover_male <- 
+  LTRE_analysis(Mprime_sens = KPT_Mprime_sensitivity_analysis_male, 
                 matrix_str = matrix_str, 
                 vital_rates = KPT_VR_treat,
-                pop_name = "KPT")
+                pop_name = "KPT", sex = "male")
+KPT_LTRE_plover_female <- 
+  LTRE_analysis(Mprime_sens = KPT_Mprime_sensitivity_analysis_female, 
+                matrix_str = matrix_str, 
+                vital_rates = KPT_VR_treat,
+                pop_name = "KPT", sex = "female")
 
-KPM_LTRE_plover <- 
-  LTRE_analysis(Mprime_sens = KPM_Mprime_sensitivity_analysis, 
+KPM_LTRE_plover_male <- 
+  LTRE_analysis(Mprime_sens = KPM_Mprime_sensitivity_analysis_male, 
                 matrix_str = matrix_str, 
                 vital_rates = KPM_VR_treat,
-                pop_name = "KPM")
+                pop_name = "KPM", sex = "male")
+KPM_LTRE_plover_female <- 
+  LTRE_analysis(Mprime_sens = KPM_Mprime_sensitivity_analysis_female, 
+                matrix_str = matrix_str, 
+                vital_rates = KPM_VR_treat,
+                pop_name = "KPM", sex = "female")
 
-MP_LTRE_plover <- 
-  LTRE_analysis(Mprime_sens = MP_Mprime_sensitivity_analysis, 
+MP_LTRE_plover_male <- 
+  LTRE_analysis(Mprime_sens = MP_Mprime_sensitivity_analysis_male, 
                 matrix_str = matrix_str, 
                 vital_rates = MP_VR_treat,
-                pop_name = "MP")
+                pop_name = "MP", sex = "male")
+MP_LTRE_plover_female <- 
+  LTRE_analysis(Mprime_sens = MP_Mprime_sensitivity_analysis_female, 
+                matrix_str = matrix_str, 
+                vital_rates = MP_VR_treat,
+                pop_name = "MP", sex = "female")
 
-WFP_LTRE_plover <- 
-  LTRE_analysis(Mprime_sens = WFP_Mprime_sensitivity_analysis, 
+WFP_LTRE_plover_male <- 
+  LTRE_analysis(Mprime_sens = WFP_Mprime_sensitivity_analysis_male, 
                 matrix_str = matrix_str, 
                 vital_rates = WFP_VR_treat,
-                pop_name = "WFP")
+                pop_name = "WFP", sex = "male")
+WFP_LTRE_plover_female <- 
+  LTRE_analysis(Mprime_sens = WFP_Mprime_sensitivity_analysis_female, 
+                matrix_str = matrix_str, 
+                vital_rates = WFP_VR_treat,
+                pop_name = "WFP", sex = "female")
 
-SP_LTRE_plover <- 
-  LTRE_analysis(Mprime_sens = SP_Mprime_sensitivity_analysis, 
+SP_LTRE_plover_male <- 
+  LTRE_analysis(Mprime_sens = SP_Mprime_sensitivity_analysis_male, 
                 matrix_str = matrix_str, 
                 vital_rates = SP_VR_treat,
-                pop_name = "SP")
+                pop_name = "SP", sex = "male")
+SP_LTRE_plover_female <- 
+  LTRE_analysis(Mprime_sens = SP_Mprime_sensitivity_analysis_female, 
+                matrix_str = matrix_str, 
+                vital_rates = SP_VR_treat,
+                pop_name = "SP", sex = "female")
 
-LTRE_plover <- rbind(KIP_LTRE_plover, KPT_LTRE_plover, KPM_LTRE_plover,
-                     MP_LTRE_plover, WFP_LTRE_plover, SP_LTRE_plover)
+LTRE_plover_male <- rbind(KIP_LTRE_plover_male, KPT_LTRE_plover_male, 
+                          KPM_LTRE_plover_male, MP_LTRE_plover_male, 
+                          WFP_LTRE_plover_male, SP_LTRE_plover_male)
+LTRE_plover_male$sex <- "male"
+LTRE_plover_female <- rbind(KIP_LTRE_plover_female, KPT_LTRE_plover_female, 
+                            KPM_LTRE_plover_female, MP_LTRE_plover_female, 
+                            WFP_LTRE_plover_female, SP_LTRE_plover_female)
+LTRE_plover_female$sex <- "female"
 
 # define the factor levels of the population variable so that the populations
 # are in an order that reflects the ASR (male biased to female biased)
-LTRE_plover$population <- 
-  factor(LTRE_plover$population ,
+LTRE_plover_male$population <- 
+  factor(LTRE_plover_male$population ,
          levels = c("SP",
                     "KPT",
                     "KPM",
                     "MP",
                     "WFP",
                     "KIP"))
+LTRE_plover_female$population <- 
+  factor(LTRE_plover_female$population ,
+         levels = c("SP",
+                    "KPT",
+                    "KPM",
+                    "MP",
+                    "WFP",
+                    "KIP"))
+
+LTRE_plover <- rbind(LTRE_plover_male, LTRE_plover_female)
 ```
+Check if contributions add up to the ASR bias in each population
+```{r}
+# SP
+LTRE_contributions_check(
+  M_matrix_vital_rates = SP_VR_treat, 
+  M_matrix_ASR = SP_ASR_treat, 
+  Mprime_sensitivities = 
+    SP_Mprime_sensitivity_analysis_male$ASR_pert_results$sensitivities, 
+  scenario = "male")
+LTRE_contributions_check(
+  M_matrix_vital_rates = SP_VR_treat, 
+  M_matrix_ASR = SP_ASR_treat, 
+  Mprime_sensitivities = 
+   SP_Mprime_sensitivity_analysis_female$ASR_pert_results$sensitivities, 
+  scenario = "female")
+
+# KPT
+LTRE_contributions_check(
+  M_matrix_vital_rates = KPT_VR_treat, 
+  M_matrix_ASR = KPT_ASR_treat, 
+  Mprime_sensitivities = 
+    KPT_Mprime_sensitivity_analysis_male$ASR_pert_results$sensitivities, 
+  scenario = "male")
+LTRE_contributions_check(
+  M_matrix_vital_rates = KPT_VR_treat, 
+ M_matrix_ASR = KPT_ASR_treat, 
+ Mprime_sensitivities = 
+   KPT_Mprime_sensitivity_analysis_female$ASR_pert_results$sensitivities, 
+ scenario = "male")
+
+# KPM
+LTRE_contributions_check(
+  M_matrix_vital_rates = KPM_VR_treat, 
+  M_matrix_ASR = KPM_ASR_treat, 
+  Mprime_sensitivities = 
+    KPM_Mprime_sensitivity_analysis_male$ASR_pert_results$sensitivities, 
+  scenario = "male")
+LTRE_contributions_check(
+  M_matrix_vital_rates = KPM_VR_treat, 
+  M_matrix_ASR = KPM_ASR_treat, 
+  Mprime_sensitivities = 
+    KPM_Mprime_sensitivity_analysis_female$ASR_pert_results$sensitivities, 
+  scenario = "female")
+
+# MP
+LTRE_contributions_check(
+  M_matrix_vital_rates = MP_VR_treat, 
+  M_matrix_ASR = MP_ASR_treat, 
+  Mprime_sensitivities = 
+    MP_Mprime_sensitivity_analysis_male$ASR_pert_results$sensitivities, 
+  scenario = "male")
+LTRE_contributions_check(
+  M_matrix_vital_rates = MP_VR_treat, 
+  M_matrix_ASR = MP_ASR_treat, 
+  Mprime_sensitivities = 
+    MP_Mprime_sensitivity_analysis_female$ASR_pert_results$sensitivities, 
+  scenario = "female")
+
+# WFP
+LTRE_contributions_check(
+  M_matrix_vital_rates = WFP_VR_treat, 
+  M_matrix_ASR = WFP_ASR_treat, 
+  Mprime_sensitivities = 
+    WFP_Mprime_sensitivity_analysis_male$ASR_pert_results$sensitivities, 
+  scenario = "male")
+LTRE_contributions_check(
+  M_matrix_vital_rates = WFP_VR_treat, 
+  M_matrix_ASR = WFP_ASR_treat, 
+  Mprime_sensitivities = 
+    WFP_Mprime_sensitivity_analysis_female$ASR_pert_results$sensitivities, 
+  scenario = "female")
+
+# KIP
+LTRE_contributions_check(
+  M_matrix_vital_rates = KIP_VR_treat, 
+  M_matrix_ASR = KIP_ASR_treat, 
+  Mprime_sensitivities = 
+    KIP_Mprime_sensitivity_analysis_male$ASR_pert_results$sensitivities, 
+  scenario = "male")
+LTRE_contributions_check(
+  M_matrix_vital_rates = KIP_VR_treat, 
+  M_matrix_ASR = KIP_ASR_treat, 
+  Mprime_sensitivities = 
+    KIP_Mprime_sensitivity_analysis_female$ASR_pert_results$sensitivities, 
+  scenario = "female")
+```
+
 custom color palette for the plotting of Juvenile and Adult stats
 ```{r}
 cbPalette <- c("#A6A6A6", "#D9D9D9", "#D9D9D9", "#A6A6A6")
 ```
-Figure S2: plot the comparative LTRE results
-```{r, fig.width=6, fig.height=3, fig.align="center"}
+Figure S1: plot the comparative LTRE results
+```{r, fig.width=6, fig.height=4, fig.align="center"}
 LTRE_plover$parameter <- 
   factor(LTRE_plover$parameter, 
-         levels = c("Mating system", "Hatching sex ratio", "Juvenile survival", "Adult survival"))
+         levels = c("Mating system", "Hatching sex ratio", 
+                    "Juvenile survival", "Adult survival"))
 
 population_names <- c(
   'SP'="\nMexico",
@@ -2611,84 +2933,95 @@ species_names <- c(
   'KIP'="C. pecuarius\n"
 )
 
-Figure_S2_background <-
-  ggplot2::ggplot(data = LTRE_plover[which(LTRE_plover$model == "ASR"), ],
+analysis_names <- c(
+  'male'="Male Mo scenario",
+  'female'="Female Mo scenario"
+)
+
+Figure_S1_background <-
+ggplot2::ggplot(data = LTRE_plover[which(LTRE_plover$model == "ASR"), ],
                   aes(x = parameter, y = contribution, fill = parameter)) +
   theme_bw() +
-  annotate("rect", xmin=-Inf, xmax=Inf, ymin=-0.15, ymax=0, alpha=0.6,
+  annotate("rect", xmin=-Inf, xmax=Inf, ymin=-0.16, ymax=0, alpha=0.6,
            fill=brewer.pal(8, "Dark2")[c(2)]) +
-  annotate("rect", xmin=-Inf, xmax=Inf, ymin=0, ymax=0.15, alpha=0.6,
+  annotate("rect", xmin=-Inf, xmax=Inf, ymin=0, ymax=0.16, alpha=0.6,
            fill=brewer.pal(8, "Dark2")[c(1)]) +
-  annotate("text", x = c(2), y = c(-0.13),
-           label = c("female"), size = 4,
-           vjust = c(0), hjust = c(0.5)) +
-  annotate("text", x = c(2), y = c(0.13),
+  annotate("text", x = c(2), y = c(-0.152),
            label = c("male"), size = 4,
+           vjust = c(0), hjust = c(0.5)) +
+  annotate("text", x = c(2), y = c(0.158),
+           label = c("female"), size = 4,
            vjust = c(1), hjust = c(0.5)) +
-  facet_grid(. ~ population, labeller = as_labeller(species_names)) +
-  theme(#text = element_text(family="Franklin Gothic Book", 
-        #                    colour = "white"),
-        legend.position = "none",
-        axis.title.x = element_text(size=10, vjust=-0.1, colour = "white"),
-        axis.text.x  = element_text(size=9, angle = 45, hjust = 1, colour = "white"),
-        axis.title.y = element_text(size=10, hjust=0.5, vjust = 3.5, colour = "white"),
-        axis.text.y  = element_text(size=9, colour = "white"),
+  facet_grid(sex ~ population, 
+             labeller = labeller(.cols = species_names, .rows = analysis_names)) +
+  theme(legend.position = "none",
+        axis.title.x = element_text(size=7, vjust=-0.1, colour = "white"),
+        axis.text.x  = element_text(size=6, angle = 45, hjust = 1, colour = "white"),
+        axis.title.y = element_text(size=7, hjust=0.5, vjust = 3.5, colour = "white"),
+        axis.text.y  = element_text(size=6, colour = "white"),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         axis.ticks.y = element_blank(),
         axis.ticks.x = element_line(size = 0.2, colour = "white"),
         axis.ticks.length = unit(0.1, "cm"),
         panel.border = element_blank(),
-        plot.margin = unit(c(0.15,0.2,1.85,0.21), "cm"),
-        panel.spacing = unit(0.3, "lines"),
+        plot.margin = unit(c(0.15,0,1.35,0.28), "cm"),
+        panel.spacing.y = unit(0.7, "lines"),
+        panel.spacing.x = unit(0.3, "lines"),
         strip.background = element_blank(),
-        strip.text = element_text(size=8, face = "italic")) +
+        strip.text.x = element_text(size=7, face = "italic"),
+        strip.text.y = element_text(size=7, colour = "white")) +
   scale_x_discrete(labels = c("Adult survival" = "Adult surv.",
                               "Juvenile survival" = "Juvenile surv",
                               "Hatching sex ratio" = expression(italic(rho)),
                               "Mating system" = expression(italic("h")))) +
-  scale_y_continuous(limits=c(-0.15,0.15), expand = c(0, 0)) +
-  ylab("Contribution to adult sex ratio") +
+  scale_y_continuous(limits=c(-0.16,0.16), expand = c(0, 0), 
+                     breaks = c(-0.10, -0.05, 0.00, 0.05, 0.10)) +
+  ylab("Absolute contribution to adult sex ratio bias") +
   xlab("Sex bias in parameter")
 
-Figure_S2 <-
+Figure_S1 <-
   ggplot2::ggplot() +
   theme_bw() +
   geom_bar(data = LTRE_plover[which(LTRE_plover$model == "ASR"), ],
            aes(x = parameter, y = contribution, fill = parameter), 
            color = "black", stat = "identity", size = 0.2) + 
-  facet_grid(. ~ population, labeller = as_labeller(population_names)) +
-  theme(#text = element_text(family="Franklin Gothic Book"),
-        legend.position = "none",
+  facet_grid(sex ~ population, 
+             labeller = labeller(.cols = population_names, .rows = analysis_names)) +
+  theme(legend.position = "none",
         panel.background = element_rect(fill = "transparent",colour = NA),
         plot.background = element_rect(fill = "transparent",colour = NA),
-        axis.title.x = element_text(size=10, vjust=-0.1),
-        axis.text.x  = element_text(size=9, angle = 45, hjust = 1),
-        axis.title.y = element_text(size=10, hjust=0.5, vjust = 3.5),
-        axis.text.y  = element_text(size=9),
+        axis.title.x = element_text(size=7, vjust=-0.1),
+        axis.text.x  = element_text(size=6, angle = 45, hjust = 1),
+        axis.title.y = element_text(size=7, hjust=0.5, vjust = 3.5),
+        axis.text.y  = element_text(size=7),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         axis.ticks.y = element_line(size = 0.2, colour = "grey40"),
         axis.ticks.length = unit(0.1, "cm"),
         axis.ticks.x = element_line(size = 0.2, colour = "grey40"),
         panel.border = element_blank(),
-        panel.spacing = unit(0.3, "lines"),
+        plot.margin = unit(c(0.2,0,0.2,0.2), "cm"),
+        panel.spacing.y = unit(0.7, "lines"),
+        panel.spacing.x = unit(0.3, "lines"),
         strip.background = element_blank(),
-        strip.text = element_text(size=7)) +
+        strip.text.x = element_text(size=6),
+        strip.text.y = element_text(size=7)) +
   scale_fill_manual(values = cbPalette) +
-  scale_y_continuous(limits=c(-0.15,0.15), expand = c(0, 0)) +
+  scale_y_continuous(limits=c(-0.16,0.16), expand = c(0, 0), 
+                     breaks = c(-0.10, -0.05, 0.00, 0.05, 0.10)) +
   scale_x_discrete(labels = c("Adult survival" = "Adult surv.",
                               "Juvenile survival" = "Juvenile surv",
                               "Hatching sex ratio" = expression(italic("rho")),
                               "Mating system" = expression(italic("h")))) +
-  ylab("Contribution to adult sex ratio") +
+  ylab("Absolute contribution to adult sex ratio bias") +
   xlab("Sex bias in parameter")
 
 grid.newpage()
 pushViewport( viewport( layout = grid.layout( 1 , 1 , widths = unit( 1 , "npc" ) ) ) )
-print( Figure_S2_background + theme(legend.position="none") ,
+print( Figure_S1_background + theme(legend.position="none") ,
        vp = viewport( layout.pos.row = 1 , layout.pos.col = 1 ) )
-print( Figure_S2 + theme(legend.position="none") ,
+print( Figure_S1 + theme(legend.position="none") ,
        vp = viewport( layout.pos.row = 1 , layout.pos.col = 1 ) )
 ```
 Determine how much larger the contribution of each vital rates is compared to juvenile survival
@@ -2696,51 +3029,115 @@ juvenile vs HSR:
 ```{r}
 mean(c(abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                LTRE_plover$parameter == "Juvenile survival" & 
-                               LTRE_plover$population == "KIP"),2])/
+                               LTRE_plover$population == "KIP" & 
+                                 LTRE_plover$sex == "male"),2])/
          abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                  LTRE_plover$parameter == "Hatching sex ratio" & 
-                                 LTRE_plover$population == "KIP"),2]),
+                                 LTRE_plover$population == "KIP" & 
+                                 LTRE_plover$sex == "male"),2]),
        abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                LTRE_plover$parameter == "Hatching sex ratio" & 
-                               LTRE_plover$population == "KPT"),2])/
+                               LTRE_plover$population == "KPT" & 
+                                 LTRE_plover$sex == "male"),2])/
          abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                  LTRE_plover$parameter == "Adult survival" & 
-                                 LTRE_plover$population == "KPT"),2]),
+                                 LTRE_plover$population == "KPT" & 
+                                 LTRE_plover$sex == "male"),2]),
        abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                LTRE_plover$parameter == "Hatching sex ratio" & 
-                               LTRE_plover$population == "SP"),2])/
+                               LTRE_plover$population == "SP" & 
+                                 LTRE_plover$sex == "male"),2])/
          abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                  LTRE_plover$parameter == "Adult survival" & 
-                                 LTRE_plover$population == "SP"),2])))
+                                 LTRE_plover$population == "SP" & 
+                                 LTRE_plover$sex == "male"),2])))
+
+mean(c(abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "KIP" & 
+                                 LTRE_plover$sex == "female"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Hatching sex ratio" & 
+                                 LTRE_plover$population == "KIP" & 
+                                 LTRE_plover$sex == "female"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Hatching sex ratio" & 
+                               LTRE_plover$population == "KPT" & 
+                                 LTRE_plover$sex == "female"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$population == "KPT" & 
+                                 LTRE_plover$sex == "female"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Hatching sex ratio" & 
+                               LTRE_plover$population == "SP" & 
+                                 LTRE_plover$sex == "female"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$population == "SP" & 
+                                 LTRE_plover$sex == "female"),2])))
 ```
 juvenile vs adult:
 ```{r}
 mean(c(abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                LTRE_plover$parameter == "Juvenile survival" & 
-                               LTRE_plover$population == "KIP"),2])/
+                               LTRE_plover$population == "KIP" & 
+                                 LTRE_plover$sex == "male"),2])/
          abs(LTRE_plover[which(LTRE_plover$model == "ASR" &
                                  LTRE_plover$parameter == "Adult survival" & 
-                                 LTRE_plover$population == "KIP"),2]),
+                                 LTRE_plover$population == "KIP" & 
+                                 LTRE_plover$sex == "male"),2]),
        abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                LTRE_plover$parameter == "Juvenile survival" & 
-                               LTRE_plover$population == "KPT"),2])/
+                               LTRE_plover$population == "KPT" & 
+                                 LTRE_plover$sex == "male"),2])/
          abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                  LTRE_plover$parameter == "Adult survival" & 
-                                 LTRE_plover$population == "KPT"),2]),
+                                 LTRE_plover$population == "KPT" & 
+                                 LTRE_plover$sex == "male"),2]),
        abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                LTRE_plover$parameter == "Juvenile survival" & 
-                               LTRE_plover$population == "SP"),2])/
+                               LTRE_plover$population == "SP" & 
+                                 LTRE_plover$sex == "male"),2])/
          abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                  LTRE_plover$parameter == "Adult survival" & 
-                                 LTRE_plover$population == "SP"),2])))
+                                 LTRE_plover$population == "SP" & 
+                                 LTRE_plover$sex == "male"),2])))
+
+mean(c(abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "KIP" & 
+                                 LTRE_plover$sex == "female"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" &
+                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$population == "KIP" & 
+                                 LTRE_plover$sex == "female"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "KPT" & 
+                                 LTRE_plover$sex == "female"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$population == "KPT" & 
+                                 LTRE_plover$sex == "female"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "SP" & 
+                                 LTRE_plover$sex == "female"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$population == "SP" & 
+                                 LTRE_plover$sex == "female"),2])))
 ```
 
 ***
 ## Association between ASR and parental cooperation
 
 To test the relationship between ASR bias and parental cooperation, we conducted a regression analysis of the following model:
-$$P = \beta_0 + \beta_1A + \beta_2A^2 + \epsilon$$
-where $P$ is the proportion of families exhibiting parental cooperation, $\beta_i$ are the regression parameters (i.e. intercept and coefficients), $A$ is the ASR, and $\epsilon$ is random error. We chose a quadratic model a priori as we expected maximum parental cooperation at unbiased ASR but minimum cooperation at both male- and female-biased ASRs. This relationship was assessed with a bootstrap procedure that incorporated uncertainty in our ASR estimates. Each iteration of the bootstrap (i) randomly sampled an ASR value from the distributions of each population shown in fig. 3b, then (ii) fit the regression model according to the point estimates of parental cooperation for each population shown in fig. 3c (white proportions). We ran 10,000 iterations of the bootstrap and evaluated the overall relationship by visualizing the average trend and the central tendency of the coefficient of determination. Due to our limited sample size (*N* = 6 populations), we consider this regression as exploratory.
+$$P(cooperation) = \beta_0 + \beta_1A + \beta_2A^2 + \epsilon$$
+$$P(male\ only\ care) = \beta_0 + \beta_1^A + \epsilon$$
+$$P(female\ only\ care) = \beta_0 - \beta_1^A + \epsilon$$
+where $P$ is the proportion of families exhibiting parental cooperation, $\beta_i$ are the regression parameters (i.e. intercept and coefficients), $A$ is the ASR, and $\epsilon$ is random error. We chose a quadratic and exponetial models a priori as we expected maximum parental cooperation at unbiased ASR but minimum cooperation at both male- and female-biased ASRs, and a non-linear increase in uni-parental care by the abundant sex under biased ASR. These relationships were assessed with a bootstrap procedure that incorporated uncertainty in our estimates of ASR and parental care. Each iteration of the bootstrap (i) randomly sampled an ASR value from the 95% confidence interval of each population shown in Fig. 2b, (ii) randomly sampled a parental care value from the truncated 95% confidence interval of each population shown in Supplementary Table 2, then (iii) fitted the regression model. We ran 1,000 iterations of the bootstrap and evaluated overall relationships by visualizing the central tendency of the regressions. Due to our limited sample size (*N* = 6 populations), we consider this regression as exploratory.
 ```{r, fig.width=4.75, fig.height=3, fig.align="center"}
 # function to extract the p-value of a model
 lmp <- function (modelobject) {
@@ -2751,9 +3148,81 @@ lmp <- function (modelobject) {
   return(p)
 }
 
+# function to sample across a truncated distribution of the 
+# parental care 95% confidence intervals
+care_trunc_sample <- function(pop_name) {
+  bc_sample <- 
+    as.data.frame(rtruncnorm(1000, 
+               a = care_summary_total[which(care_summary_total$population == pop_name), 
+                                      "bc_lower_ci"],
+               b = care_summary_total[which(care_summary_total$population == pop_name),
+                                      "bc_upper_ci"], 
+               mean = care_summary_total[which(care_summary_total$population == pop_name), 
+                                         "bc"],
+               sd = (care_summary_total[which(care_summary_total$population == pop_name), 
+                                        "bc_upper_ci"] - 
+                      care_summary_total[which(care_summary_total$population == pop_name), 
+                                          "bc"])/(qnorm(0.975))))
+  colnames(bc_sample) <- "PC_estimate"
+  bc_sample$population <- pop_name
+  bc_sample$care <- "both_care"
+  
+  fc_sample <- 
+    as.data.frame(rtruncnorm(1000, 
+               a = care_summary_total[which(care_summary_total$population == pop_name), 
+                                      "fc_lower_ci"],
+               b = care_summary_total[which(care_summary_total$population == pop_name), 
+                                      "fc_upper_ci"], 
+               mean = care_summary_total[which(care_summary_total$population == pop_name), 
+                                         "fc"],
+               sd = (care_summary_total[which(care_summary_total$population == pop_name), 
+                                        "fc_upper_ci"] - 
+                      care_summary_total[which(care_summary_total$population == pop_name), 
+                                          "fc"])/(qnorm(0.975))))
+  colnames(fc_sample) <- "PC_estimate"
+  fc_sample$population <- pop_name
+  fc_sample$care <- "female_care"
+  
+  mc_sample <- 
+    as.data.frame(rtruncnorm(1000, 
+               a = care_summary_total[which(care_summary_total$population == pop_name), 
+                                      "mc_lower_ci"],
+               b = care_summary_total[which(care_summary_total$population == pop_name), 
+                                      "mc_upper_ci"], 
+               mean = care_summary_total[which(care_summary_total$population == pop_name), 
+                                         "mc"],
+               sd = (care_summary_total[which(care_summary_total$population == pop_name), 
+                                        "mc_upper_ci"] - 
+                      care_summary_total[which(care_summary_total$population == pop_name), 
+                                          "mc"])/(qnorm(0.975))))
+  colnames(mc_sample) <- "PC_estimate"
+  mc_sample$population <- pop_name
+  mc_sample$care <- "male_care"
+  
+  care_sample <- rbind(bc_sample, fc_sample, mc_sample)
+  care_sample
+}
+
+# sample 1000 values of parental care for each population
+SP_care_sample <- care_trunc_sample(pop_name = "SP")
+KIP_care_sample <- care_trunc_sample(pop_name = "KIP")
+KPM_care_sample <- care_trunc_sample(pop_name = "KPM")
+KPT_care_sample <- care_trunc_sample(pop_name = "KPT")
+WFP_care_sample <- care_trunc_sample(pop_name = "WFP")
+MP_care_sample <- care_trunc_sample(pop_name = "MP")
+
+# bind these samples together
+care_sample <- rbind(SP_care_sample,
+                     KIP_care_sample,
+                     KPM_care_sample,
+                     KPT_care_sample,
+                     WFP_care_sample,
+                     MP_care_sample)
+
 # bootstrap to sample ASR estimates from each population and fit them to 
-# point estimates of parental cooperation. Here we have 10000 iterations.
-ASR_pc_boot <- function(nreps = 10000, len = 100) {
+# the truncated samples of parental care in the previous step. 
+# Here we have 1000 iterations.
+ASR_pc_boot <- function(nreps = 10000, len = 100, care_type) {
   
   # storage matrices for the predicted values and model statistics
   storage_matrix <- matrix(numeric(len*nreps), nreps)
@@ -2761,167 +3230,394 @@ ASR_pc_boot <- function(nreps = 10000, len = 100) {
   
   # the bootstrap for-loop
   for (i in 1:nreps) {
-    ASR_sample <- ASR_boot_out %>% group_by(population) %>% sample_n(size = 1)
-    ASR_sample_pc <- left_join(ASR_sample, care_summary_prop, 
+    ASR_sample <- 
+      ASR_boot_out %>% 
+      group_by(population) %>% 
+      sample_n(size = 1)
+    PC_sample <-
+      care_sample[which(care_sample$care == care_type), ] %>%
+      group_by(population) %>%
+      sample_n(size = 1)
+    ASR_PC_sample <- left_join(ASR_sample, 
+                               PC_sample,
                                by = "population")
     
     # quadratic model predicting the proportion of families exhibiting 
     # parental cooperation based on the ASR estimate
+    if (care_type == "both_care") {
+      mod <- 
+      lm(PC_estimate ~ ASR_boot_out + I(ASR_boot_out^2), 
+          data = ASR_PC_sample)
+      asr <- seq(0, 1, len = 100)
+      prd <- predict(mod, data.frame(ASR_boot_out = asr))
+      
+      # store results
+      storage_matrix[i,] <- prd
+      storage_matrix_stats[i,1] <- summary(mod)$coefficients[1,1]
+      storage_matrix_stats[i,2] <- summary(mod)$coefficients[2,1]
+      storage_matrix_stats[i,3] <- summary(mod)$coefficients[3,1]
+      storage_matrix_stats[i,4] <- summary(mod)$coefficients[1,4]
+      storage_matrix_stats[i,5] <- summary(mod)$coefficients[2,4]
+      storage_matrix_stats[i,6] <- summary(mod)$coefficients[3,4]
+      storage_matrix_stats[i,7] <- summary(mod)$fstatistic[1]
+      storage_matrix_stats[i,8] <- summary(mod)$adj.r.squared
+      storage_matrix_stats[i,9] <- summary(mod)$r.squared
+      storage_matrix_stats[i,10] <- lmp(mod)
+  } else if (care_type == "female_care") {
     mod <- 
-      lm(both_care ~ ASR_boot_out + I(ASR_boot_out^2),
-          data = ASR_sample_pc)
-    asr <- seq(0, 1, len = 100)
-    prd <- predict(mod, data.frame(ASR_boot_out = asr))
-    
-    # store results
-    storage_matrix[i,] <- prd
-    storage_matrix_stats[i,1] <- summary(mod)$coefficients[1,1]
-    storage_matrix_stats[i,2] <- summary(mod)$coefficients[2,1]
-    storage_matrix_stats[i,3] <- summary(mod)$coefficients[3,1]
-    storage_matrix_stats[i,4] <- summary(mod)$coefficients[1,4]
-    storage_matrix_stats[i,5] <- summary(mod)$coefficients[2,4]
-    storage_matrix_stats[i,6] <- summary(mod)$coefficients[3,4]
-    storage_matrix_stats[i,7] <- summary(mod)$fstatistic[1]
-    storage_matrix_stats[i,8] <- summary(mod)$adj.r.squared
-    storage_matrix_stats[i,9] <- summary(mod)$r.squared
-    storage_matrix_stats[i,10] <- lmp(mod)
+      lm(PC_estimate ~ exp(ASR_boot_out),
+          data = ASR_PC_sample)
+      asr <- seq(0, 1, len = 100)
+      prd <- predict(mod, data.frame(ASR_boot_out = asr))
+      
+      # store results
+      storage_matrix[i,] <- prd
+      storage_matrix_stats[i,1] <- summary(mod)$coefficients[1,1]
+      storage_matrix_stats[i,2] <- summary(mod)$coefficients[2,1]
+      storage_matrix_stats[i,4] <- summary(mod)$coefficients[1,4]
+      storage_matrix_stats[i,5] <- summary(mod)$coefficients[2,4]
+      storage_matrix_stats[i,7] <- summary(mod)$fstatistic[1]
+      storage_matrix_stats[i,8] <- summary(mod)$adj.r.squared
+      storage_matrix_stats[i,9] <- summary(mod)$r.squared
+      storage_matrix_stats[i,10] <- lmp(mod)
+  } else
+    mod <- 
+      lm(PC_estimate ~ exp(ASR_boot_out),
+          data = ASR_PC_sample)
+      asr <- seq(0, 1, len = 100)
+      prd <- predict(mod, data.frame(ASR_boot_out = asr))
+      
+      # store results
+      storage_matrix[i,] <- prd
+      storage_matrix_stats[i,1] <- summary(mod)$coefficients[1,1]
+      storage_matrix_stats[i,2] <- summary(mod)$coefficients[2,1]
+      storage_matrix_stats[i,4] <- summary(mod)$coefficients[1,4]
+      storage_matrix_stats[i,5] <- summary(mod)$coefficients[2,4]
+      storage_matrix_stats[i,7] <- summary(mod)$fstatistic[1]
+      storage_matrix_stats[i,8] <- summary(mod)$adj.r.squared
+      storage_matrix_stats[i,9] <- summary(mod)$r.squared
+      storage_matrix_stats[i,10] <- lmp(mod)
   }
-  
   # save as a list
   results_list <-
     list(storage_matrix,
          storage_matrix_stats
          )
-}
+  }
 
-# run the bootstrap
-ASR_PC_pred <- ASR_pc_boot()
+# run the bootstrap on the three types of care
+ASR_PC_pred_b <- ASR_pc_boot(care_type = "both_care", nreps = 1000)
+ASR_PC_pred_f <- ASR_pc_boot(care_type = "female_care", nreps = 1000)
+ASR_PC_pred_m <- ASR_pc_boot(care_type = "male_care", nreps = 1000)
 
 # restructure the bootstrap results
-ASR_PC_pred_melt <- melt(t(ASR_PC_pred[[1]]))
-ASR_PC_pred_melt$ASR_pred <- seq(0, 1, len = 100)
-ASR_PC_pred_melt <- ASR_PC_pred_melt[,-1]
-colnames(ASR_PC_pred_melt) <- c("Iteration", "PC", "ASR")
+ASR_PC_pred_b_melt <- melt(t(ASR_PC_pred_b[[1]]))
+ASR_PC_pred_b_melt$ASR_pred <- seq(0, 1, len = 100)
+ASR_PC_pred_b_melt <- ASR_PC_pred_b_melt[,-1]
+colnames(ASR_PC_pred_b_melt) <- c("Iteration", "PC", "ASR")
+ASR_PC_pred_b_melt$care_type <- "both_care"
+
+ASR_PC_pred_f_melt <- melt(t(ASR_PC_pred_f[[1]]))
+ASR_PC_pred_f_melt$ASR_pred <- seq(0, 1, len = 100)
+ASR_PC_pred_f_melt <- ASR_PC_pred_f_melt[,-1]
+colnames(ASR_PC_pred_f_melt) <- c("Iteration", "PC", "ASR")
+ASR_PC_pred_f_melt$care_type <- "female_care"
+
+ASR_PC_pred_m_melt <- melt(t(ASR_PC_pred_m[[1]]))
+ASR_PC_pred_m_melt$ASR_pred <- seq(0, 1, len = 100)
+ASR_PC_pred_m_melt <- ASR_PC_pred_m_melt[,-1]
+colnames(ASR_PC_pred_m_melt) <- c("Iteration", "PC", "ASR")
+ASR_PC_pred_m_melt$care_type <- "male_care"
+
+ASR_PC_pred_melt <- rbind(ASR_PC_pred_b_melt, 
+                          ASR_PC_pred_m_melt,
+                          ASR_PC_pred_f_melt)
+
+ASR_PC_pred_melt$care_type <- as.factor(ASR_PC_pred_melt$care_type)
+ASR_PC_pred_melt$care_type <- 
+  factor(ASR_PC_pred_melt$care_type ,
+         levels = c("male_care",
+                    "both_care",
+                    "female_care"))
+
 
 # calculate the average response across all bootstraps given an ASR value
-ASR_PC_summary <- 
-  ASR_PC_pred_melt %>%
+ASR_PC_b_summary <-
+  ASR_PC_pred_b_melt %>%
   dplyr::group_by(ASR) %>%
-  dplyr::summarise(avg = mean(PC))
+  dplyr::summarise(avg = mean(PC),
+                   care_type = "both_care")
+
+ASR_PC_f_summary <- 
+  ASR_PC_pred_f_melt %>%
+  dplyr::group_by(ASR) %>%
+  dplyr::summarise(avg = mean(PC),
+                   care_type = "female_care")
+
+ASR_PC_m_summary <- 
+  ASR_PC_pred_m_melt %>%
+  dplyr::group_by(ASR) %>%
+  dplyr::summarise(avg = mean(PC),
+                   care_type = "male_care")
+
+ASR_PC_summary <- rbind(ASR_PC_b_summary, 
+                        ASR_PC_f_summary,
+                        ASR_PC_m_summary)
+
+ASR_PC_summary$care_type <- as.factor(ASR_PC_summary$care_type)
+ASR_PC_summary$care_type <- 
+  factor(ASR_PC_summary$care_type ,
+         levels = c("male_care",
+                    "both_care",
+                    "female_care"))
+
+# Consolidate the results
+fc_care_summary <- 
+  care_summary_total[, c("population", "fc", "female_care", "n", 
+                         "fc_lower_ci", "fc_upper_ci")]
+fc_care_summary$care_type <- "female_care"
+colnames(fc_care_summary) <- c("population", "care_prop", "care_num", "n", 
+                               "lcl", "ucl", "care_type")
+
+mc_care_summary <- 
+  care_summary_total[, c("population", "mc", "male_care", "n", 
+                         "mc_lower_ci", "mc_upper_ci")]
+mc_care_summary$care_type <- "male_care"
+colnames(mc_care_summary) <- c("population", "care_prop", "care_num", "n", 
+                               "lcl", "ucl", "care_type")
+
+bc_care_summary <- 
+  care_summary_total[, c("population", "bc", "both_care", "n", 
+                         "bc_lower_ci", "bc_upper_ci")]
+bc_care_summary$care_type <- "both_care"
+colnames(bc_care_summary) <- c("population", "care_prop", "care_num", "n", 
+                               "lcl", "ucl", "care_type")
+
+care_summary_tidy <- rbind(fc_care_summary,
+                           mc_care_summary,
+                           bc_care_summary)
 
 # join the care data with the ASR data for plotting
-ASR_PC_join <- left_join(care_summary_prop, ASR_boot_summary, by = "population")
+ASR_PC_join <- left_join(care_summary_tidy, ASR_boot_summary, by = "population")
 
-# plot the non-linear relationship (Figure 3)
+# make an additional variable for numbered labels
+ASR_PC_join$pop_num <- ifelse(ASR_PC_join$population == "SP", "1",
+                              ifelse(ASR_PC_join$population == "KPT", "2",
+                                    ifelse(ASR_PC_join$population == "KPM", "3",
+                                          ifelse(ASR_PC_join$population == "MP", "4",
+                                                ifelse(ASR_PC_join$population == "WFP", 
+                                                       "5", "6")))))
+# specify levels
+ASR_PC_join$care_type <- 
+  factor(ASR_PC_join$care_type ,
+         levels = c("male_care",
+                    "both_care",
+                    "female_care"))
+
+ASR_PC_join$care_type <- 
+  factor(ASR_PC_join$care_type ,
+         levels = c("male_care",
+                    "both_care",
+                    "female_care"))
+
+care_names <- c(
+  'both_care'="Parental cooperation",
+  'female_care'="Female-only care",
+  'male_care'="Male-only care"
+)
+
+# plot the uni-parental care relationship (Figure S3)
+ASR_PC_real_plot_exp_mf <- 
 ggplot(NULL) +  
   annotate("rect", xmin=0.15, xmax=0.5, ymin=-Inf, ymax=Inf, alpha=0.6,
            fill= brewer.pal(8, "Dark2")[c(2)]) +
   annotate("rect", xmin=0.5, xmax=0.85, ymin=-Inf, ymax=Inf, alpha=0.6,
            fill= brewer.pal(8, "Dark2")[c(1)]) +
   theme_bw() +
-  geom_line(data = ASR_PC_pred_melt, 
-            aes(x = ASR, y = PC, group = Iteration), 
-            size = 0.25,  alpha = 0.01, colour = "white") +
-  geom_line(data = ASR_PC_summary,
-              aes(x = ASR, y = avg),
-              size = 0.75,  alpha = 1) +
-  geom_errorbarh(data = ASR_PC_join, 
-                 aes(x = avg, y = both_care, 
-                     xmax = ucl, xmin = lcl, height = 0), 
+  geom_line(data = filter(ASR_PC_pred_melt, care_type != "both_care"),
+            aes(x = ASR, y = PC, group = Iteration),
+            size = 0.25,  alpha = 0.1, colour = "white") +
+  geom_errorbarh(data = filter(ASR_PC_join, care_type != "both_care"),
+                 aes(x = avg_ASR, y = care_prop, 
+                     xmax = ucl_ASR, xmin = lcl_ASR, height = 0), 
                  size = 0.3) +
-  geom_point(size = 1, alpha = 1, data = ASR_PC_join, 
-             aes(x = avg, y = both_care)) +
-  theme(#text = element_text(family="Franklin Gothic Book"),
-    legend.position = "none",
-    axis.title.x = element_text(size=10),
-    axis.text.x  = element_text(size=9, colour = "black"), 
-    axis.title.y = element_text(size=10),
-    axis.text.y  = element_text(size=9, colour = "black"),
+  geom_errorbar(data = filter(ASR_PC_join, care_type != "both_care"),
+                 aes(x = avg_ASR,
+                     ymax = ucl, ymin = lcl, width = 0),
+                 size = 0.3) +
+  geom_point(size = 1, alpha = 1, data = filter(ASR_PC_join, care_type != "both_care"),
+             aes(x = avg_ASR, y = care_prop)) +
+  geom_label_repel(data = filter(ASR_PC_join, care_type != "both_care"),
+                   aes(x = avg_ASR, y = care_prop, label = pop_num),
+                   colour = "black", fontface = "bold",
+                   size = 1.5,
+                   label.padding = 0.1,
+                   box.padding = 0.2,
+                   segment.color = 'grey50', segment.size = 0.2) +
+  facet_grid(. ~ care_type, labeller = as_labeller(care_names)) +
+  theme(legend.position = "none",
+    axis.title.x = element_text(size=7),
+    axis.text.x  = element_text(size=6, colour = "black"), 
+    axis.title.y = element_text(size=7, vjust = 0),
+    axis.text.y  = element_text(size=6, colour = "black"),
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
     axis.ticks.y = element_line(size = 0.2, colour = "grey40"),
     axis.ticks.length = unit(0.1, "cm"),
     axis.ticks.x = element_line(size = 0.2, colour = "grey40"),
-    plot.margin = unit(c(0.2,4,0.2,2.8), "cm"),
-    plot.background = element_rect(fill = "transparent",colour = NA)) +
+    plot.margin = unit(c(0.2,0.2,0.2,-0.2), "cm"),
+    plot.background = element_rect(fill = "transparent",colour = NA),
+    panel.border = element_blank(),
+    panel.spacing = unit(0.3, "lines"),
+    strip.background = element_blank(),
+    strip.text = element_blank()) +
+    ylab(expression(atop(italic(Observed), paste("proportion of families")))) +
+    xlab("Adult sex ratio (proportion male, 95% CI)") +
     scale_y_continuous(limits=c(0,1)) +
-    ylab("Proportion of families\nwith parental cooperation") +
-    xlab("Adult sex ratio (proportion male)") +
     scale_x_continuous(limits=c(0.15, 0.85), expand = c(0, 0))
+ASR_PC_real_plot_exp_mf
 
-# restructure the bootstrap stats for plotting
-ASR_PC_pred_stat <- melt(ASR_PC_pred[[2]])
-ASR_PC_pred_stat <- ASR_PC_pred_stat[,-1]
-colnames(ASR_PC_pred_stat) <- c("coef", "beta")
-
-# facet labels to use in plot
-parameter_labels <- c(
-  '9'="R-squared",
-  '10'="P-value"
-)
-
-# plot the distributions of R-squared and P-value results from the bootstrap
-ggplot() +
-  geom_histogram(binwidth = 0.01, 
-                 data = filter(ASR_PC_pred_stat, coef == 9 | coef == 10), 
-                 aes(x = beta), fill = "grey30") +
-  facet_grid(. ~ coef, labeller = as_labeller(parameter_labels)) +
+# plot the parental cooperation relationship (Figure 3a)
+ASR_PC_real_plot_quad_b <- 
+ggplot(NULL) +  
+  annotate("rect", xmin=0, xmax=0.5, ymin=-Inf, ymax=Inf, alpha=0.6,
+           fill= brewer.pal(8, "Dark2")[c(2)]) +
+  annotate("rect", xmin=0.5, xmax=1, ymin=-Inf, ymax=Inf, alpha=0.6,
+           fill= brewer.pal(8, "Dark2")[c(1)]) +
   theme_bw() +
-  theme(#text = element_text(family="Franklin Gothic Book"),
-        legend.position = "none",
-        panel.background = element_rect(fill = "transparent",colour = NA),
-        plot.background = element_rect(fill = "transparent",colour = NA),
-        axis.title.x = element_text(size=10, vjust=-0.1),
-        axis.text.x  = element_text(size=9, angle = 45, hjust = 1),
-        axis.title.y = element_text(size=10, hjust=0.5, vjust = 3.5),
-        axis.text.y  = element_text(size=9),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.ticks.y = element_line(size = 0.2, colour = "grey40"),
-        axis.ticks.length = unit(0.1, "cm"),
-        axis.ticks.x = element_line(size = 0.2, colour = "grey40"),
-        panel.border = element_blank(),
-        plot.margin = unit(c(0.2,0.2,0.2,0.22), "cm"),
-        panel.spacing = unit(1, "lines"),
-        strip.text = element_text(size=9)) +
-  ylab("Bootstrap frequency") +
-  xlab("Parameter estimate") +
-  scale_x_continuous(limits = c(0, 1), expand = c(0, 0))
+  geom_line(data = filter(ASR_PC_pred_melt, care_type == "both_care")[1:100000,],
+            aes(x = ASR, y = PC, group = Iteration),
+            size = 0.25,  alpha = 0.1, colour = "white") +
+  geom_errorbarh(data = filter(ASR_PC_join, care_type == "both_care"),
+                 aes(x = avg_ASR, y = care_prop, 
+                     xmax = ucl_ASR, xmin = lcl_ASR, height = 0), 
+                 size = 0.3) +
+  geom_errorbar(data = filter(ASR_PC_join, care_type == "both_care"),
+                 aes(x = avg_ASR,
+                     ymax = ucl, ymin = lcl, width = 0),
+                 size = 0.3) +
+  geom_point(size = 1, alpha = 1, data = filter(ASR_PC_join,  care_type == "both_care"),
+             aes(x = avg_ASR, y = care_prop)) +
+  geom_label_repel(data = filter(ASR_PC_join, care_type == "both_care"),
+                   aes(x = avg_ASR, y = care_prop, label = pop_num),
+                   colour = "black", fontface = "bold",
+                   size = 1.5,
+                   label.padding = 0.1,
+                   box.padding = 0.2,
+                   segment.color = 'grey50', segment.size = 0.2) +
+  facet_grid(. ~ care_type, labeller = as_labeller(care_names)) +
+  theme(legend.position = "none",
+    axis.title.x = element_text(size=7),
+    axis.text.x  = element_text(size=6, colour = "black"), 
+    axis.title.y = element_text(size=7, vjust = 0),
+    axis.text.y  = element_text(size=6, colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.ticks.y = element_line(size = 0.2, colour = "grey40"),
+    axis.ticks.length = unit(0.1, "cm"),
+    axis.ticks.x = element_line(size = 0.2, colour = "grey40"),
+    plot.margin = unit(c(0.15,5,0.1,0.1), "cm"),
+    plot.background = element_rect(fill = "transparent",colour = NA),
+    panel.border = element_blank(),
+    panel.spacing = unit(0.3, "lines"),
+    strip.background = element_blank(),
+    strip.text = element_blank()) +
+    ylab("Proportion of families\nwith parental cooperation (95% CI)") +
+    xlab("Adult sex ratio (proportion male, 95% CI)") +
+    scale_y_continuous(limits=c(0,1)) +
+    scale_x_continuous(limits=c(0, 1), expand = c(0, 0))
+ASR_PC_real_plot_quad_b
 
-# facet labels to use in plot
-parameter_labels2 <- c(
-  '2'="ASR coef",
-  '3'="ASR^2 coef"
-)
+# Predictions
+asr <- seq(0, 1, len = 100)
+bicare <- -4*asr^2 + 4*asr
+mcare <- 1-bicare
+mcare[1:49] <- 0
+fcare <- 1-bicare
+fcare[51:100] <- 0
 
-# plot the distributions of first and second beta coefficients from the 
-# bootstrap
-ggplot() +
-  geom_histogram(binwidth = 1, 
-                 data = filter(ASR_PC_pred_stat, coef == 2 | coef == 3), 
-                 aes(x = beta), fill = "grey30") +
-  facet_grid(. ~ coef, labeller = as_labeller(parameter_labels2)) +
+care_type <- c(rep("both_care", 100),
+               rep("male_care", 100),
+               rep("female_care", 100))
+predictions <- data.frame(c(bicare, 
+                            mcare, 
+                            fcare), asr, care_type)
+colnames(predictions)[1] <- "prediction"
+
+predictions$care_type <- 
+  factor(predictions$care_type ,
+         levels = c("male_care",
+                    "both_care",
+                    "female_care"))
+
+ASR_PC_pred_plot <- 
+ggplot(data.frame(x = c(0, 1)), aes(x)) +  
+  annotate("rect", xmin=-Inf, xmax=0.5, ymin=-Inf, ymax=Inf, alpha=0.6,
+           fill= brewer.pal(8, "Dark2")[c(2)]) +
+  annotate("rect", xmin=0.5, xmax=Inf, ymin=-Inf, ymax=Inf, alpha=0.6,
+           fill= brewer.pal(8, "Dark2")[c(1)]) +
+  geom_line(data = predictions,
+            aes(x = asr, y = prediction),
+            size = 0.75,  alpha = 1) +
   theme_bw() +
-  theme(#text = element_text(family="Franklin Gothic Book"),
-        legend.position = "none",
-        panel.background = element_rect(fill = "transparent",colour = NA),
-        plot.background = element_rect(fill = "transparent",colour = NA),
-        axis.title.x = element_text(size=10, vjust=-0.1),
-        axis.text.x  = element_text(size=9, angle = 45, hjust = 1),
-        axis.title.y = element_text(size=10, hjust=0.5, vjust = 3.5),
-        axis.text.y  = element_text(size=9),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.ticks.y = element_line(size = 0.2, colour = "grey40"),
-        axis.ticks.length = unit(0.1, "cm"),
-        axis.ticks.x = element_line(size = 0.2, colour = "grey40"),
-        panel.border = element_blank(),
-        plot.margin = unit(c(0.2,0.2,0.2,0.22), "cm"),
-        panel.spacing = unit(1, "lines"),
-        strip.text = element_text(size=9)) +
-  ylab("Bootstrap frequency") +
-  xlab("Parameter estimate") +
-  scale_x_continuous(limits = c(-50, 50), expand = c(0, 0))
+  facet_grid(. ~ care_type, labeller = as_labeller(care_names)) +
+  theme(legend.position = "none",
+    axis.text.x  = element_blank(),
+    axis.title.x  = element_text(size=7),
+    axis.title.y = element_text(size=7, vjust = 0),
+    axis.text.y  = element_text(size=6, colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.ticks.y = element_line(size = 0.2, colour = "grey40"),
+    axis.ticks.length = unit(0.1, "cm"),
+    axis.ticks.x = element_blank(),
+    plot.margin = unit(c(0.2,0.2,0.2,-0.2), "cm"),
+    panel.border = element_blank(),
+    plot.background = element_rect(fill = "transparent",colour = NA),
+    panel.spacing = unit(0.3, "lines"),
+    strip.background = element_blank(),
+    strip.text = element_blank()) +
+    ylab(expression(atop(italic(Predicted), paste("proportion of families")))) +
+    xlab("Adult sex ratio (proportion male, 95% CI)") +
+    scale_y_continuous(limits=c(0,1)) +
+    scale_x_continuous(limits=c(0,1))
+ASR_PC_pred_plot
+
+
+# restructure the bootstrap stats for summarising
+ASR_PC_pred_stat_b <- melt(ASR_PC_pred_b[[2]])
+ASR_PC_pred_stat_b <- ASR_PC_pred_stat_b[,-1]
+colnames(ASR_PC_pred_stat_b) <- c("coef", "beta")
+ASR_PC_pred_stat_b$care_type <- "both_care"
+
+ASR_PC_pred_stat_f <- melt(ASR_PC_pred_f[[2]])
+ASR_PC_pred_stat_f <- ASR_PC_pred_stat_f[,-1]
+colnames(ASR_PC_pred_stat_f) <- c("coef", "beta")
+ASR_PC_pred_stat_f$care_type <- "female_care"
+
+ASR_PC_pred_stat_m <- melt(ASR_PC_pred_m[[2]])
+ASR_PC_pred_stat_m <- ASR_PC_pred_stat_m[,-1]
+colnames(ASR_PC_pred_stat_m) <- c("coef", "beta")
+ASR_PC_pred_stat_m$care_type <- "male_care"
+
+
+ASR_PC_pred_stat <- 
+  bind_rows(ASR_PC_pred_stat_f[which(ASR_PC_pred_stat_f$coef == 2), ],
+            ASR_PC_pred_stat_m[which(ASR_PC_pred_stat_b$coef == 2), ])
+ASR_PC_pred_stat$care_type <- as.factor(ASR_PC_pred_stat$care_type)
+ASR_PC_pred_stat$coef <- as.factor(ASR_PC_pred_stat$coef)
+
+CI <- 0.95
+
+ASR_PC_pred_stat_summary <- 
+  ASR_PC_pred_stat %>%
+  dplyr::group_by(care_type, coef) %>%
+  dplyr::summarise(lcl = stats::quantile(beta, (1 - CI)/2, na.rm = TRUE),
+                   ucl = stats::quantile(beta, 1 - (1 - CI)/2, na.rm = TRUE),
+                   avg = mean(beta),
+                   med = median(beta))
+
+ASR_PC_pred_stat_summary
 ```
 
 ***
