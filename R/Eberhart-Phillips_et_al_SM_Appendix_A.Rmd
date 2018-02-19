@@ -2,7 +2,7 @@
 title: 'R-code for "Demographic causes of adult sex ratio variation and their consequences for parental cooperation"'
 author: Luke J. Eberhart-Phillips, Clemens Küpper, María Cristina Carmona-Isunza, Orsolya Vincze, Sama Zefania, Medardo Cruz-López, András Kosztolányi, Tom E. X. Miller, Zoltán Barta, Innes C. Cuthill, Terry Burke, Tamás Székely, Joseph I. Hoffman, and Oliver Krüger
 
-date: "February 7, 2018"
+date: "February 20, 2018"
 output:
   pdf_document:
     keep_tex: yes
@@ -1939,24 +1939,26 @@ LTRE_analysis <-
 
     # run a for loop to extract the parameter contributions
     if (sex == "male")
+      # male rates scenario
       for(i in 1:nrow(LTRE_ASR))
       {
         LTRE_ASR[i, 2] <-
           ifelse(i < 3, (vital_rates[[i]] - vital_rates[[i + 2]]) *
                    Mprime_sens$ASR_pert_results$sensitivities[i],
-                 ifelse(i == 3, (vital_rates[[7]] - (1-vital_rates[[7]])) *
+                 ifelse(i == 3, (vital_rates[[7]] - 0.5) *
                           Mprime_sens$ASR_pert_results$sensitivities[7],
                         (vital_rates[[5]] - 1) * 
                           Mprime_sens$ASR_pert_results$sensitivities[5]))
       }
     
     else
+      # female rates scenario
       for(i in 1:nrow(LTRE_ASR))
       {
         LTRE_ASR[i, 2] <-
           ifelse(i < 3, (vital_rates[[i + 2]] - vital_rates[[i]]) *
                    Mprime_sens$ASR_pert_results$sensitivities[i + 2],
-                 ifelse(i == 3, (vital_rates[[7]] - (1-vital_rates[[7]])) *
+                 ifelse(i == 3, (vital_rates[[7]] - 0.5) *
                           Mprime_sens$ASR_pert_results$sensitivities[7],
                         (vital_rates[[5]] - 1) * 
                           Mprime_sens$ASR_pert_results$sensitivities[5]))
@@ -1988,9 +1990,9 @@ LTRE_contributions_check <-
             Mprime_sensitivities[3],
           (M_matrix_vital_rates[[4]] - M_matrix_vital_rates[[4]]) * 
             Mprime_sensitivities[4],
-          (M_matrix_vital_rates[[7]] - (1 - M_matrix_vital_rates[[7]])) *
+          (M_matrix_vital_rates[[7]] - 1) *
             Mprime_sensitivities[7],
-          (M_matrix_vital_rates[[5]] - 1) * Mprime_sensitivities[5]
+          (M_matrix_vital_rates[[5]] - 0.5) * Mprime_sensitivities[5]
         )
   
   else
@@ -2004,9 +2006,9 @@ LTRE_contributions_check <-
             Mprime_sensitivities[1],
           (M_matrix_vital_rates[[2]] - M_matrix_vital_rates[[2]]) * 
             Mprime_sensitivities[2],
-          (M_matrix_vital_rates[[7]] - (1 - M_matrix_vital_rates[[7]])) * 
+          (M_matrix_vital_rates[[7]] - 1) *
             Mprime_sensitivities[7],
-          (M_matrix_vital_rates[[5]] - 1) * Mprime_sensitivities[5]
+          (M_matrix_vital_rates[[5]] - 0.5) * Mprime_sensitivities[5]
         )
   ASR_bias <- abs(M_matrix_ASR - 0.5)
   absolute_difference <- abs(ASR_bias) - abs(contribution_sum)
@@ -3008,7 +3010,7 @@ Figure_S1 <-
         strip.text.x = element_text(size=6),
         strip.text.y = element_text(size=7)) +
   scale_fill_manual(values = cbPalette) +
-  scale_y_continuous(limits=c(-0.16,0.16), expand = c(0, 0), 
+  scale_y_continuous(limits=c(-0.16,0.16), expand = c(0, 0),
                      breaks = c(-0.10, -0.05, 0.00, 0.05, 0.10)) +
   scale_x_discrete(labels = c("Adult survival" = "Adult surv.",
                               "Juvenile survival" = "Juvenile surv",
@@ -3036,19 +3038,43 @@ mean(c(abs(LTRE_plover[which(LTRE_plover$model == "ASR" &
                                  LTRE_plover$population == "KIP" & 
                                  LTRE_plover$sex == "male"),2]),
        abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
-                               LTRE_plover$parameter == "Hatching sex ratio" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "WFP" & 
+                                 LTRE_plover$sex == "male"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Hatching sex ratio" & 
+                                 LTRE_plover$population == "WFP" & 
+                                 LTRE_plover$sex == "male"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "MP" & 
+                                 LTRE_plover$sex == "male"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Hatching sex ratio" & 
+                                 LTRE_plover$population == "MP" & 
+                                 LTRE_plover$sex == "male"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "KPM" & 
+                                 LTRE_plover$sex == "male"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Hatching sex ratio" & 
+                                 LTRE_plover$population == "KPM" & 
+                                 LTRE_plover$sex == "male"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
                                LTRE_plover$population == "KPT" & 
                                  LTRE_plover$sex == "male"),2])/
          abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
-                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$parameter == "Hatching sex ratio" & 
                                  LTRE_plover$population == "KPT" & 
                                  LTRE_plover$sex == "male"),2]),
        abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
-                               LTRE_plover$parameter == "Hatching sex ratio" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
                                LTRE_plover$population == "SP" & 
                                  LTRE_plover$sex == "male"),2])/
          abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
-                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$parameter == "Hatching sex ratio" & 
                                  LTRE_plover$population == "SP" & 
                                  LTRE_plover$sex == "male"),2])))
 
@@ -3061,19 +3087,43 @@ mean(c(abs(LTRE_plover[which(LTRE_plover$model == "ASR" &
                                  LTRE_plover$population == "KIP" & 
                                  LTRE_plover$sex == "female"),2]),
        abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
-                               LTRE_plover$parameter == "Hatching sex ratio" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "WFP" & 
+                                 LTRE_plover$sex == "female"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Hatching sex ratio" & 
+                                 LTRE_plover$population == "WFP" & 
+                                 LTRE_plover$sex == "female"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "MP" & 
+                                 LTRE_plover$sex == "female"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Hatching sex ratio" & 
+                                 LTRE_plover$population == "MP" & 
+                                 LTRE_plover$sex == "female"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "KPM" & 
+                                 LTRE_plover$sex == "female"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Hatching sex ratio" & 
+                                 LTRE_plover$population == "KPM" & 
+                                 LTRE_plover$sex == "female"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
                                LTRE_plover$population == "KPT" & 
                                  LTRE_plover$sex == "female"),2])/
          abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
-                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$parameter == "Hatching sex ratio" & 
                                  LTRE_plover$population == "KPT" & 
                                  LTRE_plover$sex == "female"),2]),
        abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
-                               LTRE_plover$parameter == "Hatching sex ratio" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
                                LTRE_plover$population == "SP" & 
                                  LTRE_plover$sex == "female"),2])/
          abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
-                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$parameter == "Hatching sex ratio" & 
                                  LTRE_plover$population == "SP" & 
                                  LTRE_plover$sex == "female"),2])))
 ```
@@ -3083,9 +3133,33 @@ mean(c(abs(LTRE_plover[which(LTRE_plover$model == "ASR" &
                                LTRE_plover$parameter == "Juvenile survival" & 
                                LTRE_plover$population == "KIP" & 
                                  LTRE_plover$sex == "male"),2])/
-         abs(LTRE_plover[which(LTRE_plover$model == "ASR" &
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                  LTRE_plover$parameter == "Adult survival" & 
                                  LTRE_plover$population == "KIP" & 
+                                 LTRE_plover$sex == "male"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "WFP" & 
+                                 LTRE_plover$sex == "male"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$population == "WFP" & 
+                                 LTRE_plover$sex == "male"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "MP" & 
+                                 LTRE_plover$sex == "male"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$population == "MP" & 
+                                 LTRE_plover$sex == "male"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "KPM" & 
+                                 LTRE_plover$sex == "male"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$population == "KPM" & 
                                  LTRE_plover$sex == "male"),2]),
        abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                LTRE_plover$parameter == "Juvenile survival" & 
@@ -3108,9 +3182,33 @@ mean(c(abs(LTRE_plover[which(LTRE_plover$model == "ASR" &
                                LTRE_plover$parameter == "Juvenile survival" & 
                                LTRE_plover$population == "KIP" & 
                                  LTRE_plover$sex == "female"),2])/
-         abs(LTRE_plover[which(LTRE_plover$model == "ASR" &
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                  LTRE_plover$parameter == "Adult survival" & 
                                  LTRE_plover$population == "KIP" & 
+                                 LTRE_plover$sex == "female"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "WFP" & 
+                                 LTRE_plover$sex == "female"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$population == "WFP" & 
+                                 LTRE_plover$sex == "female"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "MP" & 
+                                 LTRE_plover$sex == "female"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$population == "MP" & 
+                                 LTRE_plover$sex == "female"),2]),
+       abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                               LTRE_plover$parameter == "Juvenile survival" & 
+                               LTRE_plover$population == "KPM" & 
+                                 LTRE_plover$sex == "female"),2])/
+         abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
+                                 LTRE_plover$parameter == "Adult survival" & 
+                                 LTRE_plover$population == "KPM" & 
                                  LTRE_plover$sex == "female"),2]),
        abs(LTRE_plover[which(LTRE_plover$model == "ASR" & 
                                LTRE_plover$parameter == "Juvenile survival" & 
